@@ -5,3 +5,12 @@ declare module '*.vue' {
     const component: DefineComponent<Record<string, never>, Record<string, never>, unknown>;
     export default component;
 }
+
+export {};
+
+declare module 'vue-router' {
+    interface RouteMeta {
+        requiresAuth?: boolean;
+        guestOnly?: boolean;
+    }
+}

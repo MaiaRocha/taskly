@@ -1,4 +1,8 @@
 <?php
 
-// REST API boundary for the Taskly SPA. Endpoints are added starting Phase 2
-// (docs/SPEC.md §64 — Authentication) once Sanctum/Fortify are in place.
+use App\Http\Resources\UserResource;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/user', fn (Request $request) => new UserResource($request->user()))
+    ->middleware('auth:sanctum');
