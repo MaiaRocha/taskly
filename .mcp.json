@@ -1,9 +1,8 @@
 {
     "mcpServers": {
         "laravel-boost": {
-            "command": "wsl.exe",
+            "command": "/usr/bin/php8.3",
             "args": [
-                "/usr/bin/php8.3",
                 "/home/maia/taskly/artisan",
                 "boost:mcp"
             ]

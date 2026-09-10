@@ -1,0 +1,21 @@
+services:
+    mariadb:
+        image: mariadb:11.4.13
+        restart: unless-stopped
+        environment:
+            MARIADB_DATABASE: ${DB_DATABASE}
+            MARIADB_USER: ${DB_USERNAME}
+            MARIADB_PASSWORD: ${DB_PASSWORD}
+            MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+        ports:
+            - '${DB_PORT}:3306'
+        volumes:
+            - taskly-mariadb-data:/var/lib/mysql
+        healthcheck:
+            test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+volumes:
+    taskly-mariadb-data:
