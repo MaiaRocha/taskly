@@ -463,6 +463,8 @@ A cor deve pertencer a uma paleta permitida.
 
 Um usuário não deve conseguir utilizar Tags pertencentes a outro usuário.
 
+Ao implementar a associação de tags a uma tarefa (attach/sync), os IDs de tag recebidos devem ser resolvidos apenas dentro do conjunto de tags pertencentes ao usuário autenticado — nunca aceitos a partir de um ID arbitrário do payload sem essa verificação.
+
 ---
 
 ## 14. Attachments
