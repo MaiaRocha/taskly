@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 #[Fillable(['title', 'short_description', 'description', 'status', 'due_at', 'position'])]
 class Task extends Model
@@ -46,9 +47,28 @@ class Task extends Model
     {
         return [
             'status' => TaskStatus::class,
-            'due_at' => 'datetime',
             'completed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * A plain 'datetime' cast does not normalize an offset-bearing input
+     * (e.g. "2026-12-15T18:00:00-03:00") to UTC before storing it — it
+     * persists the wall-clock digits of whatever timezone the input carried.
+     * This mutator converts to UTC on the way in and interprets the raw,
+     * offset-less DATETIME column value as UTC on the way out, instead of
+     * relying on the app's default timezone to do it implicitly.
+     */
+    protected function dueAt(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => $value !== null ? Carbon::parse($value, 'UTC') : null,
+            set: fn (mixed $value) => match (true) {
+                $value === null => null,
+                $value instanceof \DateTimeInterface => Carbon::instance($value)->utc(),
+                default => Carbon::parse($value)->utc(),
+            },
+        );
     }
 
     protected function overdue(): Attribute

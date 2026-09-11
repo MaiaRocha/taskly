@@ -575,3 +575,55 @@ Expõe `id`, `name`, `description`, `color`, `position`, `created_at`, `updated_
 ### Cores
 
 `Project::COLORS` usa somente as 6 cores auxiliares já aprovadas: `#06B6D4`, `#14B8A6`, `#EC4899`, `#F59E0B`, `#22C55E`, `#3B82F6`. `#635BFF` (Primary) permanece cor de identidade/ações e não entra na paleta de Projects.
+
+---
+
+## 22. Tasks API (Fase 5)
+
+Endpoints implementados:
+
+```text
+GET    /api/projects/{project}/tasks
+POST   /api/projects/{project}/tasks
+GET    /api/tasks/{task}
+PATCH  /api/tasks/{task}
+DELETE /api/tasks/{task}
+```
+
+`PUT` não faz parte do contrato e retorna `405`. `PATCH /api/tasks/{task}/move` ainda não existe nesta fase.
+
+### Autorização
+
+`index` autoriza o Project via `ProjectPolicy::view`. `store` usa `TaskPolicy::create(User, Project)` via `StoreTaskRequest::authorize()`. `show`/`delete` usam `Gate` + `TaskPolicy` no Controller. `update` usa `TaskPolicy::update` via `UpdateTaskRequest::authorize()`. Uma Task ou Project existente pertencente a outro usuário retorna `403`; um recurso inexistente retorna `404`.
+
+### Status
+
+`status` é opcional no Store. Quando omitido, o servidor define `TaskStatus::NotStarted` explicitamente. Quando presente, deve ser um valor válido do enum; `null` explícito não significa default e é inválido (`422`).
+
+### `due_at`
+
+A API aceita apenas ISO-8601 com timezone explícito (`Z` ou offset `±HH:MM`, frações de segundo permitidas); um valor sem timezone é inválido. Datas no passado são permitidas. O input é normalizado para UTC antes de persistir, e o valor bruto do `DATETIME` é interpretado explicitamente como UTC ao ler — nenhuma das duas direções depende implicitamente da timezone padrão da aplicação.
+
+Exemplo:
+
+```text
+entrada:    2026-12-15T18:00:00-03:00
+banco:      2026-12-15 21:00:00
+API:        2026-12-15T21:00:00.000000Z
+```
+
+### Position
+
+`position` é controlado pelo servidor. Uma nova Task recebe `(max(position) do Project ?? -1) + 1`. O cliente não pode definir nem alterar `position` nesta fase. Essa decisão define apenas a posição inicial e não fecha a futura estratégia de reorder (posição global vs. por coluna/status). O `index` ordena por `position` ASC e, em empate, por `id` ASC.
+
+### Coleção
+
+`GET /api/projects/{project}/tasks` retorna a coleção completa, sem paginação.
+
+### `TaskResource`
+
+Expõe `id`, `project_id`, `title`, `short_description`, `description`, `status`, `due_at`, `position`, `completed_at`, `overdue`, `created_at`, `updated_at`. `status` é exposto como o valor escalar do enum. `overdue` é calculado pelo Model e exposto explicitamente pelo Resource. Não expõe `tags`, `attachments`, o Project completo ou dados de usuário.
+
+### `completed_at`
+
+Continua controlado exclusivamente pelo Model. Um `PATCH` de `status` passa pela instância Eloquent (`$task->update(...)`), disparando a regra de domínio que sincroniza `completed_at`. O campo não é controlável diretamente pelo payload.
