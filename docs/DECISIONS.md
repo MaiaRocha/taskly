@@ -539,3 +539,39 @@ Prioridade do projeto:
 Evitar overengineering.
 
 As decisões devem favorecer simplicidade, clareza, manutenção e aderência às convenções Laravel.
+
+---
+
+## 21. Projects API (Fase 4)
+
+Endpoints implementados:
+
+```text
+GET    /api/projects
+POST   /api/projects
+GET    /api/projects/{project}
+PATCH  /api/projects/{project}
+DELETE /api/projects/{project}
+```
+
+`PUT` não faz parte do contrato e retorna `405`.
+
+### Autorização
+
+`index` é escoposto ao usuário autenticado. `create`/`update` usam `ProjectPolicy` via Form Request (`authorize()`). `show`/`delete` usam `Gate` + `ProjectPolicy` no Controller. Um Project existente pertencente a outro usuário retorna `403`; um Project inexistente retorna `404`.
+
+### Position
+
+`position` é controlado pelo servidor. Um novo Project recebe `(max(position) do usuário ?? -1) + 1`. O cliente não pode definir nem alterar `position` nesta fase. O `index` ordena por `position` ASC e, em empate, por `id` ASC.
+
+### Coleção
+
+`GET /api/projects` retorna a coleção completa, sem paginação.
+
+### `ProjectResource`
+
+Expõe `id`, `name`, `description`, `color`, `position`, `created_at`, `updated_at`. Não expõe `user_id`. Mantém o wrapper `data` padrão do Laravel.
+
+### Cores
+
+`Project::COLORS` usa somente as 6 cores auxiliares já aprovadas: `#06B6D4`, `#14B8A6`, `#EC4899`, `#F59E0B`, `#22C55E`, `#3B82F6`. `#635BFF` (Primary) permanece cor de identidade/ações e não entra na paleta de Projects.
