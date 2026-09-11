@@ -622,8 +622,63 @@ API:        2026-12-15T21:00:00.000000Z
 
 ### `TaskResource`
 
-Expõe `id`, `project_id`, `title`, `short_description`, `description`, `status`, `due_at`, `position`, `completed_at`, `overdue`, `created_at`, `updated_at`. `status` é exposto como o valor escalar do enum. `overdue` é calculado pelo Model e exposto explicitamente pelo Resource. Não expõe `tags`, `attachments`, o Project completo ou dados de usuário.
+Expõe `id`, `project_id`, `title`, `short_description`, `description`, `status`, `due_at`, `position`, `completed_at`, `overdue`, `created_at`, `updated_at`, `tags`. `status` é exposto como o valor escalar do enum. `overdue` é calculado pelo Model e exposto explicitamente pelo Resource. `tags` foi adicionado na Fase 6 (ver §23); não expõe `attachments`, o Project completo ou dados de usuário.
 
 ### `completed_at`
 
 Continua controlado exclusivamente pelo Model. Um `PATCH` de `status` passa pela instância Eloquent (`$task->update(...)`), disparando a regra de domínio que sincroniza `completed_at`. O campo não é controlável diretamente pelo payload.
+
+---
+
+## 23. Tags API + associação Task ↔ Tag (Fase 6)
+
+### Endpoints
+
+```text
+GET    /api/tags
+POST   /api/tags
+PATCH  /api/tags/{tag}
+DELETE /api/tags/{tag}
+
+PUT    /api/tasks/{task}/tags
+```
+
+Não existe `GET /api/tags/{tag}` (Tags são sempre consumidas como coleção, sem necessidade real de busca individual) nem `PUT /api/tags/{tag}` (`405`, mesmo padrão de Project/Task). A associação Task ↔ Tag não tem endpoints incrementais (`POST`/`DELETE` por Tag) — apenas o sync completo.
+
+### Autorização
+
+`index` de Tags é escopado a `$request->user()->tags()`. `create`/`update`/`delete` usam `TagPolicy` (create livre para qualquer usuário autenticado; view/update/delete restritos ao owner). Tag existente de outro usuário → `403`; inexistente → `404`.
+
+A associação (`PUT /api/tasks/{task}/tags`) autoriza via `TaskPolicy::update` (alterar as Tags é tratado como alteração de estado da Task) — não existe Pivot Policy. Task de outro usuário → `403`; Task inexistente → `404`.
+
+### Coleção de Tags
+
+`GET /api/tags` retorna a coleção completa do usuário autenticado, sem paginação, ordenada por `normalized_name` ASC e, em empate, `id` ASC.
+
+### Paleta de cores
+
+`App\Support\ColorPalette::AUXILIARY` é a fonte única das 6 cores auxiliares (`#06B6D4`, `#14B8A6`, `#EC4899`, `#F59E0B`, `#22C55E`, `#3B82F6`). `Project::COLORS` foi preservado como alias de compatibilidade e aponta para `ColorPalette::AUXILIARY` — não existem duas listas independentes. `StoreTagRequest`/`UpdateTagRequest`/`TagFactory` usam a mesma fonte. A cor Primary (`#635BFF`) não pertence à paleta de Tags.
+
+### Normalização e unicidade lógica
+
+`Tag::normalize()` (`trim` + `mb_strtolower`, sem remoção de acentos, sem slug, sem colapso de espaços internos) é a única fonte da derivação de `normalized_name`, reutilizada pelo mutator de `name` e pelos Form Requests. `normalized_name` continua interno, nunca aceito do payload. A unicidade lógica (por `user_id` + `normalized_name`) é validada em `Store`/`Update` via `after()`, retornando `422` amigável antes de qualquer tentativa de gravação; o `Update` exclui a própria Tag da checagem. A constraint `UNIQUE` do banco permanece como última defesa contra condição de corrida. O mesmo nome lógico é permitido para usuários diferentes.
+
+### `TagResource`
+
+Expõe `id`, `name`, `color`, `created_at`, `updated_at`. Não expõe `user_id` nem `normalized_name`.
+
+### Sync Task ↔ Tag
+
+`PUT /api/tasks/{task}/tags`, body `{ "tag_ids": [...] }`, com semântica de substituição completa do conjunto (não incremental). Regras: `tag_ids` deve estar presente (`present`, não `required` — um array vazio é um valor válido, não "ausente"), ser array, no máximo 5 itens; cada item inteiro e distinto. `[]` remove todas as Tags da Task.
+
+Os IDs são resolvidos exclusivamente dentro de `$request->user()->tags()`; um ID inexistente e um ID pertencente a outro usuário produzem o **mesmo** erro genérico em `tag_ids` (`422`), sem distinguir a causa e sem expor qualquer dado da Tag alheia. Essa checagem só roda depois que a validação estrutural de `tag_ids`/`tag_ids.*` já passou.
+
+A operação de `sync()` no pivot é protegida por `DB::transaction()`, garantindo atomicidade da substituição integral; o carregamento da relação e a montagem do Resource ficam fora da transação. Nenhum outro endpoint (Tags CRUD, Task CRUD) usa transação.
+
+### `TaskResource` e Tags
+
+`TaskResource` passa a expor `tags` (coleção de `TagResource`) em todas as respostas atuais — `index`, `show`, `store`, `update` e o sync — com eager loading explícito em cada call site (`with('tags')` no índice, `load('tags')` nos demais). Uma Task sem Tags retorna `"tags": []`; não existe formato alternativo de Task.
+
+### Ordenação das Tags de uma Task
+
+`Task::tags()` ordena por `tags.normalized_name` ASC e `tags.id` ASC (colunas qualificadas), centralizado na relação — não em cada Controller. Não existe `position` no pivot nem reorder de Tags.

@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Tag;
 use App\Models\User;
+use App\Support\ColorPalette;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -11,11 +12,6 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class TagFactory extends Factory
 {
-    /**
-     * @var list<string>
-     */
-    private const COLORS = ['#635BFF', '#06B6D4', '#14B8A6', '#EC4899', '#F59E0B', '#22C55E', '#3B82F6'];
-
     /**
      * Define the model's default state.
      *
@@ -29,7 +25,7 @@ class TagFactory extends Factory
         return [
             'user_id' => User::factory(),
             'name' => fake()->unique()->word(),
-            'color' => fake()->randomElement(self::COLORS),
+            'color' => fake()->randomElement(ColorPalette::AUXILIARY),
         ];
     }
 }

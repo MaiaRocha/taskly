@@ -15,16 +15,22 @@ class Tag extends Model
     use HasFactory;
 
     /**
-     * Single source of truth for normalized_name: trim + Unicode lowercase
-     * the incoming name, derived here so no Factory/Controller/Form Request
-     * ever needs to compute or pass normalized_name itself.
+     * Single source of truth for normalized_name: trim + Unicode lowercase.
+     * Reused by the name() mutator below and by StoreTagRequest/
+     * UpdateTagRequest so the uniqueness check validates against exactly
+     * what will be persisted, without duplicating the algorithm.
      */
+    public static function normalize(string $name): string
+    {
+        return mb_strtolower(trim($name));
+    }
+
     protected function name(): Attribute
     {
         return Attribute::make(
             set: fn (string $value): array => [
                 'name' => trim($value),
-                'normalized_name' => mb_strtolower(trim($value)),
+                'normalized_name' => self::normalize($value),
             ],
         );
     }

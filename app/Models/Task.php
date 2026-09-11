@@ -86,7 +86,9 @@ class Task extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(Tag::class);
+        return $this->belongsToMany(Tag::class)
+            ->orderBy('tags.normalized_name')
+            ->orderBy('tags.id');
     }
 
     public function attachments(): HasMany

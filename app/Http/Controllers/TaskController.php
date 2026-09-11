@@ -20,6 +20,7 @@ class TaskController extends Controller
         Gate::authorize('view', $project);
 
         $tasks = $project->tasks()
+            ->with('tags')
             ->orderBy('position')
             ->orderBy('id')
             ->get();
@@ -40,6 +41,8 @@ class TaskController extends Controller
             'position' => $position,
         ]);
 
+        $task->load('tags');
+
         return (new TaskResource($task))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
@@ -49,12 +52,16 @@ class TaskController extends Controller
     {
         Gate::authorize('view', $task);
 
+        $task->load('tags');
+
         return new TaskResource($task);
     }
 
     public function update(UpdateTaskRequest $request, Task $task): TaskResource
     {
         $task->update($request->validated());
+
+        $task->load('tags');
 
         return new TaskResource($task);
     }

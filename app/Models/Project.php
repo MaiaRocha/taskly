@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ColorPalette;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,19 +15,12 @@ class Project extends Model
     use HasFactory;
 
     /**
-     * The auxiliary colors approved for projects/tags/indicators (docs/UI-UX.md §5).
-     * Does not include the Primary brand/action color (#635BFF).
+     * Kept for backward compatibility with existing call sites; the palette
+     * itself lives in ColorPalette so Project and Tag share one source.
      *
      * @var list<string>
      */
-    public const array COLORS = [
-        '#06B6D4',
-        '#14B8A6',
-        '#EC4899',
-        '#F59E0B',
-        '#22C55E',
-        '#3B82F6',
-    ];
+    public const array COLORS = ColorPalette::AUXILIARY;
 
     public function user(): BelongsTo
     {

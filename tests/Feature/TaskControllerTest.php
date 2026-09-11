@@ -109,6 +109,7 @@ describe('index', function () {
                     'overdue' => false,
                     'created_at' => '2026-01-01T12:00:00.000000Z',
                     'updated_at' => '2026-01-01T12:00:00.000000Z',
+                    'tags' => [],
                 ],
             ],
         ]);
@@ -163,6 +164,7 @@ describe('store', function () {
                 'overdue' => false,
                 'created_at' => '2026-01-01T12:00:00.000000Z',
                 'updated_at' => '2026-01-01T12:00:00.000000Z',
+                'tags' => [],
             ],
         ]);
     });
@@ -529,6 +531,7 @@ describe('show', function () {
                 'overdue' => false,
                 'created_at' => '2026-01-01T12:00:00.000000Z',
                 'updated_at' => '2026-01-01T12:00:00.000000Z',
+                'tags' => [],
             ],
         ]);
     });
@@ -771,6 +774,71 @@ describe('overdue', function () {
         $response = $this->actingAs($user)->getJson("/api/tasks/{$task->id}");
 
         $response->assertJsonPath('data.overdue', true);
+    });
+});
+
+describe('tags on TaskResource', function () {
+    test('index includes each task\'s associated tags', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = $user->tags()->create(['name' => 'Urgent', 'color' => '#EC4899']);
+        $task->tags()->attach($tag);
+
+        $response = $this->actingAs($user)->getJson("/api/projects/{$project->id}/tasks");
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data.0.tags');
+        $response->assertJsonPath('data.0.tags.0.id', $tag->id);
+        $response->assertJsonPath('data.0.tags.0.name', 'Urgent');
+    });
+
+    test('show includes the task\'s associated tags', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = $user->tags()->create(['name' => 'Urgent', 'color' => '#EC4899']);
+        $task->tags()->attach($tag);
+
+        $response = $this->actingAs($user)->getJson("/api/tasks/{$task->id}");
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data.tags');
+        $response->assertJsonPath('data.tags.0.id', $tag->id);
+    });
+
+    test('orders a task\'s tags by normalized_name, breaking ties by id', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+
+        $bravo = $user->tags()->create(['name' => 'Bravo', 'color' => '#06B6D4']);
+        $alpha = $user->tags()->create(['name' => 'alpha', 'color' => '#14B8A6']);
+        $charlie = $user->tags()->create(['name' => 'Charlie', 'color' => '#F59E0B']);
+        $task->tags()->attach([$bravo->id, $alpha->id, $charlie->id]);
+
+        $response = $this->actingAs($user)->getJson("/api/tasks/{$task->id}");
+
+        $response->assertJsonPath('data.tags.0.id', $alpha->id);
+        $response->assertJsonPath('data.tags.1.id', $bravo->id);
+        $response->assertJsonPath('data.tags.2.id', $charlie->id);
+    });
+
+    test('update preserves the task\'s tags when only another field changes', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['title' => 'Old title']);
+        $tag = $user->tags()->create(['name' => 'Urgent', 'color' => '#EC4899']);
+        $task->tags()->attach($tag);
+
+        $response = $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'title' => 'New title',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.title', 'New title');
+        $response->assertJsonCount(1, 'data.tags');
+        $response->assertJsonPath('data.tags.0.id', $tag->id);
     });
 });
 
