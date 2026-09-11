@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TaskStatus;
+use App\Models\Attachment;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -110,6 +111,7 @@ describe('index', function () {
                     'created_at' => '2026-01-01T12:00:00.000000Z',
                     'updated_at' => '2026-01-01T12:00:00.000000Z',
                     'tags' => [],
+                    'attachments_count' => 0,
                 ],
             ],
         ]);
@@ -165,6 +167,7 @@ describe('store', function () {
                 'created_at' => '2026-01-01T12:00:00.000000Z',
                 'updated_at' => '2026-01-01T12:00:00.000000Z',
                 'tags' => [],
+                'attachments_count' => 0,
             ],
         ]);
     });
@@ -532,6 +535,7 @@ describe('show', function () {
                 'created_at' => '2026-01-01T12:00:00.000000Z',
                 'updated_at' => '2026-01-01T12:00:00.000000Z',
                 'tags' => [],
+                'attachments_count' => 0,
             ],
         ]);
     });
@@ -839,6 +843,44 @@ describe('tags on TaskResource', function () {
         $response->assertJsonPath('data.title', 'New title');
         $response->assertJsonCount(1, 'data.tags');
         $response->assertJsonPath('data.tags.0.id', $tag->id);
+    });
+});
+
+describe('attachments_count on TaskResource', function () {
+    test('index reports the real number of attachments', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        Attachment::factory()->for($task)->count(2)->create();
+
+        $response = $this->actingAs($user)->getJson("/api/projects/{$project->id}/tasks");
+
+        $response->assertJsonPath('data.0.attachments_count', 2);
+    });
+
+    test('show reports the real number of attachments', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        Attachment::factory()->for($task)->count(2)->create();
+
+        $response = $this->actingAs($user)->getJson("/api/tasks/{$task->id}");
+
+        $response->assertJsonPath('data.attachments_count', 2);
+    });
+
+    test('update preserves the attachments count when only another field changes', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['title' => 'Old title']);
+        Attachment::factory()->for($task)->count(2)->create();
+
+        $response = $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'title' => 'New title',
+        ]);
+
+        $response->assertJsonPath('data.title', 'New title');
+        $response->assertJsonPath('data.attachments_count', 2);
     });
 });
 

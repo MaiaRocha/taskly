@@ -18,6 +18,7 @@ class TaskTagController extends Controller
         });
 
         $task->load('tags');
+        $task->loadCount('attachments');
 
         return new TaskResource($task);
     }

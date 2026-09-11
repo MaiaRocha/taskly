@@ -17,6 +17,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Attachments Disk
+    |--------------------------------------------------------------------------
+    |
+    | The disk used to store Task attachments. Kept separate from the default
+    | disk so it can be swapped (e.g. to S3) without touching the rest of the
+    | application. Always resolve it via config('filesystems.attachments_disk')
+    | rather than hardcoding a disk name.
+    |
+    */
+
+    'attachments_disk' => env('ATTACHMENTS_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

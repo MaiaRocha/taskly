@@ -622,7 +622,7 @@ API:        2026-12-15T21:00:00.000000Z
 
 ### `TaskResource`
 
-Expõe `id`, `project_id`, `title`, `short_description`, `description`, `status`, `due_at`, `position`, `completed_at`, `overdue`, `created_at`, `updated_at`, `tags`. `status` é exposto como o valor escalar do enum. `overdue` é calculado pelo Model e exposto explicitamente pelo Resource. `tags` foi adicionado na Fase 6 (ver §23); não expõe `attachments`, o Project completo ou dados de usuário.
+Expõe `id`, `project_id`, `title`, `short_description`, `description`, `status`, `due_at`, `position`, `completed_at`, `overdue`, `created_at`, `updated_at`, `tags`, `attachments_count`. `status` é exposto como o valor escalar do enum. `overdue` é calculado pelo Model e exposto explicitamente pelo Resource. `tags` foi adicionado na Fase 6 (ver §23); `attachments_count` foi adicionado na Fase 7 (ver §24) — a lista completa de Attachments não entra no `TaskResource`, só a contagem; não expõe o Project completo nem dados de usuário.
 
 ### `completed_at`
 
@@ -682,3 +682,52 @@ A operação de `sync()` no pivot é protegida por `DB::transaction()`, garantin
 ### Ordenação das Tags de uma Task
 
 `Task::tags()` ordena por `tags.normalized_name` ASC e `tags.id` ASC (colunas qualificadas), centralizado na relação — não em cada Controller. Não existe `position` no pivot nem reorder de Tags.
+
+---
+
+## 24. Attachments / Uploads (Fase 7)
+
+### Endpoints
+
+```text
+GET    /api/tasks/{task}/attachments
+POST   /api/tasks/{task}/attachments
+GET    /api/attachments/{attachment}/download
+DELETE /api/attachments/{attachment}
+```
+
+Não existe `GET /api/attachments/{attachment}` de metadata individual (a listagem por Task já cobre esse uso) nem endpoint `/preview` separado — o download já serve como preview quando o MIME permite exibição inline.
+
+### Disk
+
+Disco configurável via `ATTACHMENTS_DISK` (`.env`), lido em `config('filesystems.attachments_disk')` — nunca `'local'` fixo no código da feature. O disco `local` já é privado por padrão (não servido como diretório público estático).
+
+### Upload
+
+`multipart/form-data`, campo `files` (array). Regras: mínimo 1, máximo 5 arquivos por requisição; cada arquivo até 5 MB; tipos permitidos `jpg`, `jpeg`, `png`, `webp`, `pdf`, `txt`, `doc`, `docx`, `xls`, `xlsx`, validados via `Illuminate\Validation\Rules\File::types()` (inspeciona o conteúdo real do arquivo, não a extensão declarada pelo cliente).
+
+Limite adicional de 10 anexos por Task, verificado dentro de uma `DB::transaction()` com a Task bloqueada via `lockForUpdate()`, antes de qualquer escrita física — excedê-lo rejeita a requisição inteira (`422`), sem gravação parcial. O lote de múltiplos arquivos é tratado como uma unidade: se qualquer arquivo falhar ao ser persistido, os arquivos já gravados nessa requisição são removidos do disco e nenhuma linha permanece.
+
+### Path e metadata
+
+Arquivos são gravados em `attachments/{task_id}/{hashName}` (nome aleatório com extensão derivada do MIME real, nunca o nome original do cliente). `original_name`, `mime_type` e `size` são sempre derivados do arquivo enviado no servidor; `task_id` vem exclusivamente da relação `$task->attachments()->create(...)`. Nenhum desses campos é aceito do payload.
+
+### `AttachmentResource`
+
+Expõe `id`, `original_name`, `mime_type`, `size`, `created_at`, `updated_at`, `download_url`. Não expõe `task_id` nem o `path` físico. `download_url` é relativo (`/api/attachments/{attachment}/download`).
+
+### Download
+
+Endpoint único, atrás de `auth:sanctum` e `AttachmentPolicy::view` — sem URL pública permanente, sem signed URL. Conteúdo é transmitido via `Storage::disk($disk)->response(...)` (streaming, sem carregar o arquivo inteiro em memória). `Content-Type` vem de `mime_type` persistido; o nome apresentado vem de `original_name`. `Content-Disposition` é `inline` para `image/jpeg`, `image/png`, `image/webp`, `application/pdf` e `text/plain`; `attachment` para os demais tipos permitidos (Office). Uma linha cujo arquivo físico não existe mais no disco é tratada como inconsistência interna: resulta em erro de servidor, nunca em `404` (que implicaria a inexistência do próprio registro), e a resposta não expõe o path físico.
+
+### Delete Attachment
+
+Autoriza primeiro. Se o arquivo físico já não existe, remove a linha diretamente. Se existe, tenta a exclusão física; se ela retornar falha mas o arquivo já não existir mais (convergência), prossegue normalmente; se o arquivo continuar existindo após a falha, a linha não é removida e a operação resulta em erro — evitando criar deliberadamente uma linha órfã.
+
+### Delete Task / Delete Project
+
+`DeleteTask` e `DeleteProject` (`app/Actions`) resolvem a limpeza física que o cascade do banco por si só não cobre. Em ambos, a exclusão no banco acontece primeiro (a Task/Project e suas linhas dependentes via cascade); só depois disso a limpeza física é tentada. `DeleteTask` remove o diretório inteiro `attachments/{task_id}` (não apenas os paths conhecidos pelas linhas), o que também elimina eventuais arquivos órfãos dentro dele. `DeleteProject` coleta os IDs das Tasks antes do delete (o cascade os removeria do banco) e repete a mesma limpeza de diretório para cada uma — uma falha ao limpar uma Task não impede a tentativa nas demais. A limpeza física é *best-effort*: uma falha é registrada via `Log::warning` (com contexto como `task_id`/`project_id`/disk, nunca o path completo na resposta HTTP) e nunca reverte ou transforma em erro uma exclusão que já foi concluída com sucesso no banco.
+
+### `TaskResource`
+
+Passa a expor `attachments_count` (contagem derivada via `withCount`/`loadCount`, nunca persistida) em todas as respostas atuais de Task (`index`, `show`, `store`, `update`, sync de Tags). A lista completa de Attachments continua fora do `TaskResource` — permanece exclusiva do endpoint dedicado de listagem.

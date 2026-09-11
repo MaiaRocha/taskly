@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\DeleteProject;
 use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Resources\ProjectResource;
@@ -52,11 +53,11 @@ class ProjectController extends Controller
         return new ProjectResource($project);
     }
 
-    public function destroy(Project $project): Response
+    public function destroy(Project $project, DeleteProject $deleteProject): Response
     {
         Gate::authorize('delete', $project);
 
-        $project->delete();
+        $deleteProject($project);
 
         return response()->noContent();
     }

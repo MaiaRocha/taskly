@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\DeleteTask;
 use App\Enums\TaskStatus;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
@@ -21,6 +22,7 @@ class TaskController extends Controller
 
         $tasks = $project->tasks()
             ->with('tags')
+            ->withCount('attachments')
             ->orderBy('position')
             ->orderBy('id')
             ->get();
@@ -42,6 +44,7 @@ class TaskController extends Controller
         ]);
 
         $task->load('tags');
+        $task->loadCount('attachments');
 
         return (new TaskResource($task))
             ->response()
@@ -53,6 +56,7 @@ class TaskController extends Controller
         Gate::authorize('view', $task);
 
         $task->load('tags');
+        $task->loadCount('attachments');
 
         return new TaskResource($task);
     }
@@ -62,15 +66,16 @@ class TaskController extends Controller
         $task->update($request->validated());
 
         $task->load('tags');
+        $task->loadCount('attachments');
 
         return new TaskResource($task);
     }
 
-    public function destroy(Task $task): Response
+    public function destroy(Task $task, DeleteTask $deleteTask): Response
     {
         Gate::authorize('delete', $task);
 
-        $task->delete();
+        $deleteTask($task);
 
         return response()->noContent();
     }

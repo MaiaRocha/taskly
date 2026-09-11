@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Attachment;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -281,5 +282,22 @@ describe('sync response ordering', function () {
         $response->assertJsonPath('data.tags.0.id', $alpha->id);
         $response->assertJsonPath('data.tags.1.id', $bravo->id);
         $response->assertJsonPath('data.tags.2.id', $charlie->id);
+    });
+});
+
+describe('sync response attachments_count', function () {
+    test('syncing tags does not disturb the task\'s attachments_count', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        Attachment::factory()->for($task)->count(2)->create();
+        $tag = $user->tags()->create(['name' => 'Urgent', 'color' => '#EC4899']);
+
+        $response = $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [$tag->id],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.attachments_count', 2);
     });
 });
