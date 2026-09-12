@@ -2,7 +2,8 @@
 import { ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import AuthLayout from '../../components/auth/AuthLayout.vue';
-import FormField from '../../components/auth/FormField.vue';
+import Button from '../../components/ui/Button.vue';
+import FormField from '../../components/ui/FormField.vue';
 import { describeFormError } from '../../lib/form-errors';
 import { useAuthStore } from '../../stores/auth';
 
@@ -29,7 +30,7 @@ async function onSubmit(): Promise<void> {
             password: password.value,
             password_confirmation: passwordConfirmation.value,
         });
-        router.replace({ name: 'home' });
+        router.replace({ name: 'projects.index' });
     } catch (error) {
         const described = describeFormError(error);
         fieldErrors.value = described.fieldErrors;
@@ -41,7 +42,7 @@ async function onSubmit(): Promise<void> {
 </script>
 
 <template>
-    <AuthLayout title="Crie sua conta" subtitle="Organize seus projetos e tarefas no Taskly">
+    <AuthLayout title="Crie sua conta" subtitle="Comece a organizar seus projetos e tarefas.">
         <form class="space-y-4" novalidate @submit.prevent="onSubmit">
             <FormField
                 id="name"
@@ -81,18 +82,14 @@ async function onSubmit(): Promise<void> {
                 :disabled="isSubmitting"
             />
 
-            <p v-if="generalError" role="alert" class="text-sm text-red-600">{{ generalError }}</p>
+            <p v-if="generalError" role="alert" class="text-sm text-danger">{{ generalError }}</p>
 
-            <button
-                type="submit"
-                :disabled="isSubmitting"
-                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <Button type="submit" variant="primary" :loading="isSubmitting" class="w-full">
                 {{ isSubmitting ? 'Criando conta…' : 'Criar conta' }}
-            </button>
+            </Button>
         </form>
 
-        <p class="mt-6 text-center text-sm text-slate-600">
+        <p class="mt-6 text-center text-sm text-text-secondary">
             Já tem uma conta?
             <RouterLink :to="{ name: 'login' }" class="font-medium text-primary hover:text-primary-hover"> Entrar </RouterLink>
         </p>

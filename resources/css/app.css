@@ -11,4 +11,28 @@
     --color-primary-hover: #554ee8;
     --color-primary-soft: #eeedff;
     --color-page: #f7f8fc;
+
+    --color-surface: #ffffff;
+    --color-surface-hover: #f1f2f6;
+    --color-border: #e4e7ef;
+
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-muted: #94a3b8;
+
+    --color-danger: #ef4444;
+    --color-danger-soft: #fee2e2;
+    --color-danger-hover: #dc2626;
+    --color-success: #22c55e;
+    --color-success-soft: #dcfce7;
+    --color-warning: #f59e0b;
+    --color-focus-ring: #c7d2fe;
+
+    /* Auxiliary palette shared with Project/Tag color pickers (backend-approved set). */
+    --color-swatch-cyan: #06b6d4;
+    --color-swatch-teal: #14b8a6;
+    --color-swatch-pink: #ec4899;
+    --color-swatch-orange: #f59e0b;
+    --color-swatch-green: #22c55e;
+    --color-swatch-blue: #3b82f6;
 }

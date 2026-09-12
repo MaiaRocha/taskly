@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Spinner from './components/ui/Spinner.vue';
+import ToastViewport from './components/ui/ToastViewport.vue';
 import { useAuthStore } from './stores/auth';
 
 // Infrastructure gate, not final UI: protected content (via router-view)
@@ -22,7 +24,9 @@ const auth = useAuthStore();
         </div>
     </div>
 
-    <div v-else class="flex min-h-screen items-center justify-center bg-page">
-        <p class="text-sm text-slate-500">Carregando…</p>
+    <div v-else class="flex min-h-screen items-center justify-center bg-page text-text-muted">
+        <Spinner :size="24" />
     </div>
+
+    <ToastViewport />
 </template>

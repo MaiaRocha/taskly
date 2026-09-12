@@ -731,3 +731,50 @@ Autoriza primeiro. Se o arquivo físico já não existe, remove a linha diretame
 ### `TaskResource`
 
 Passa a expor `attachments_count` (contagem derivada via `withCount`/`loadCount`, nunca persistida) em todas as respostas atuais de Task (`index`, `show`, `store`, `update`, sync de Tags). A lista completa de Attachments continua fora do `TaskResource` — permanece exclusiva do endpoint dedicado de listagem.
+
+---
+
+## 25. Frontend — App Shell + Projects (Fase 8)
+
+### Rotas
+
+```text
+/projects              projects.index
+/projects/:projectId   projects.show
+```
+
+Ambas filhas de um único `AppShell` (`meta: { requiresAuth: true }`). `/` redireciona para `projects.index`; não existe uma rota `home` nem uma página de "Visão geral" — a listagem de Projects já é o destino de nível superior.
+
+### Projeto ativo
+
+O Project ativo (Sidebar, `ProjectDetailPage`) é derivado exclusivamente de `route.params.projectId`, nunca de um `activeProjectId` replicado em store — uma única fonte de verdade para essa informação.
+
+### Projects Store (Pinia)
+
+Setup store (`stores/projects.ts`) com `projects`, `status` (`idle`/`loading`/`loaded`/`error`), `fetchProjects`, `createProject`, `updateProject`, `deleteProject`, `reset`.
+
+`fetchProjects` é chamado uma única vez, no `setup()` do `AppShell` — páginas filhas (index, detail) e a Sidebar leem do mesmo estado, sem refazer a requisição. Chamadas concorrentes compartilham a mesma Promise (`inFlight`); uma vez `loaded`, uma nova chamada é no-op a menos que `force` seja passado (retry após erro).
+
+Um contador `generation`, incrementado em `reset()`, invalida qualquer requisição que ainda esteja em voo no momento do reset — sua resposta, ao chegar, é descartada em vez de repopular a store com dados de uma sessão anterior. `AppShell` chama `reset()` tanto no `setup()` quanto no `onBeforeUnmount()`, cobrindo login/logout sem reload completo de página.
+
+`createProject`/`updateProject`/`deleteProject` atualizam o array local (`push`/substituição por índice/`splice`) a partir da resposta do servidor, apenas após sucesso confirmado — nenhuma dessas operações refaz `GET /api/projects`. Em erro, o array permanece inalterado e a exceção é relançada para a camada de UI tratar.
+
+### Diálogos nativos
+
+`Modal`, `Drawer` e `ConfirmDialog` (que reaproveita `Modal`) são implementados sobre `<dialog>` + `showModal()`/`close()` — sem focus trap manual. O fechamento visual é assíncrono (uma transição CSS roda antes do `close()` real), mantendo o atributo `open` nativo até a transição terminar.
+
+Nenhuma classe utilitária de `display` (ex.: `flex`) pode ser aplicada incondicionalmente ao elemento `<dialog>`, pois uma regra de autor sobrepõe a regra de user-agent `dialog:not([open]) { display: none }` independentemente de especificidade — deixando o diálogo, mesmo fechado, ocupando espaço e interceptando cliques. Onde o layout do conteúdo exige `display` diferente de `block`, ele é condicionado ao atributo `[open]` (ex.: `hidden [&[open]]:flex`).
+
+### Create Project Modal compartilhado
+
+Existe uma única instância de `ProjectFormModal` (modo `create`) por sessão autenticada, montada pelo `AppShell` e controlada por um composable de estado efêmero em module scope (`useProjectCreateModal`, fora do Pinia — não é dado de domínio). Todo ponto de entrada (`PageHeader`, `EmptyState`, quick-add da Sidebar) abre a mesma instância. `AppShell` força esse estado de volta a fechado no `setup()` e no `onBeforeUnmount()`, para que ele nunca sobreviva a um ciclo de logout/login.
+
+No mobile, a Sidebar (com o quick-add) vive dentro do `Drawer` de navegação. Abrir o Create Modal nunca acontece com o Drawer ainda aberto — o Drawer é fechado primeiro, e o Create Modal só abre depois que o `Drawer` emite `closed` (disparado após seu próprio `dialog.close()` real), evitando dois `<dialog>` modais simultâneos.
+
+### Toast
+
+`useToast`/`ToastViewport` são um composable simples (array reativo em module scope), não uma store Pinia — feedback de sucesso é estado de UI efêmero, não dado de domínio. Usado exclusivamente para sucesso de create/update/delete de Project; erros de validação (422) permanecem inline nos formulários, e falha de delete permanece inline no `ConfirmDialog`.
+
+### `@lucide/vue`
+
+Biblioteca de ícones do frontend. O pacote `lucide-vue-next` (usado brevemente no início da fase) foi removido e substituído por `@lucide/vue` — nenhuma referência ao pacote antigo permanece no código ou nas dependências.

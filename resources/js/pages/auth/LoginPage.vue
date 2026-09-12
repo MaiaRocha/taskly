@@ -2,7 +2,8 @@
 import { ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import AuthLayout from '../../components/auth/AuthLayout.vue';
-import FormField from '../../components/auth/FormField.vue';
+import Button from '../../components/ui/Button.vue';
+import FormField from '../../components/ui/FormField.vue';
 import { describeFormError } from '../../lib/form-errors';
 import { useAuthStore } from '../../stores/auth';
 
@@ -22,7 +23,7 @@ async function onSubmit(): Promise<void> {
 
     try {
         await auth.login({ email: email.value, password: password.value });
-        router.replace({ name: 'home' });
+        router.replace({ name: 'projects.index' });
     } catch (error) {
         const described = describeFormError(error);
         fieldErrors.value = described.fieldErrors;
@@ -56,18 +57,14 @@ async function onSubmit(): Promise<void> {
                 :error="fieldErrors.password?.[0]"
             />
 
-            <p v-if="generalError" role="alert" class="text-sm text-red-600">{{ generalError }}</p>
+            <p v-if="generalError" role="alert" class="text-sm text-danger">{{ generalError }}</p>
 
-            <button
-                type="submit"
-                :disabled="isSubmitting"
-                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <Button type="submit" variant="primary" :loading="isSubmitting" class="w-full">
                 {{ isSubmitting ? 'Entrando…' : 'Entrar' }}
-            </button>
+            </Button>
         </form>
 
-        <p class="mt-6 text-center text-sm text-slate-600">
+        <p class="mt-6 text-center text-sm text-text-secondary">
             Ainda não tem conta?
             <RouterLink :to="{ name: 'register' }" class="font-medium text-primary hover:text-primary-hover">
                 Criar conta

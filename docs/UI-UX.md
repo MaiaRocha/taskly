@@ -13,6 +13,8 @@ A implementação não deve copiar literalmente produtos existentes.
 
 A referência principal de organização e experiência é o ClickUp, utilizando seus princípios de produtividade e organização como inspiração, mas mantendo identidade própria para o Taskly.
 
+Toda a interface visível ao usuário final é escrita em pt-BR. Código, nomes de tipos, componentes e rotas permanecem em inglês.
+
 ---
 
 ## 1. Objetivo visual
@@ -97,6 +99,8 @@ O tema claro deve possuir:
 - sombras discretas
 - bom contraste
 
+O fundo pode incorporar uma camada decorativa atmosférica ("aurora"): manchas suaves e difusas nas cores lavanda (Primary), azul e ciano, sempre puramente decorativas (nunca capturam clique ou foco) e posicionadas atrás de todo conteúdo funcional. A intensidade dessa camada varia por contexto — mais expressiva no Auth (§49/§50), sensivelmente mais discreta na área autenticada (§12) — mas nunca compromete a leitura de texto, cards, sidebar ou navegação, que permanecem superfícies opacas.
+
 ---
 
 ## 5. Paleta principal
@@ -119,6 +123,8 @@ Orange:  #F59E0B
 Green:   #22C55E
 Blue:    #3B82F6
 ```
+
+O seletor de cor de Projeto (e futuramente Tag) é restrito a exatamente essas seis cores auxiliares, através de inputs `radio` nativos (visualmente estilizados, mas semanticamente reais) — nunca um seletor de cor livre. A cor Primary nunca aparece como opção nesse seletor.
 
 Bases:
 
@@ -223,7 +229,7 @@ Lucide Icons
 Pacote frontend esperado:
 
 ```text
-lucide-vue-next
+@lucide/vue
 ```
 
 Ícones devem complementar textos e ações.
@@ -267,6 +273,10 @@ Não criar abstrações prematuras.
 
 Componentes devem surgir de padrões realmente reutilizados.
 
+Diálogos modais (Dialog/Modal e Drawer) devem ser implementados sobre o elemento nativo `<dialog>` (`showModal()`/`close()`), aproveitando o gerenciamento nativo de foco, tecla Escape e camada de topo do navegador — sem reimplementar manualmente um focus trap.
+
+Cards de listagem (ex.: Project Card) usam um único acento de cor — um indicador (dot) ao lado do nome — nunca uma borda lateral colorida adicional, mantendo o acento discreto e único por card.
+
 ---
 
 ## 11. shadcn-vue
@@ -287,33 +297,35 @@ O resultado final não deve parecer um projeto demonstrativo do shadcn.
 
 ## 12. App Shell
 
-A aplicação autenticada deve seguir conceitualmente:
+Em desktop, a aplicação autenticada segue:
 
 ```text
-┌──────────────────────────────────────────────┐
-│ Top Bar                                      │
-├───────────────┬──────────────────────────────┤
+┌───────────────┬──────────────────────────────┐
 │               │                              │
 │   Sidebar     │        Main Content          │
-│               │                              │
+│   (fixa)      │                              │
 │               │                              │
 └───────────────┴──────────────────────────────┘
 ```
 
+Não há uma Top Bar persistente no desktop: a Sidebar concentra marca, navegação de projetos e menu do usuário, o que tornaria uma barra superior fixa adicional redundante. Cada página é responsável pelo próprio cabeçalho de contexto (título, descrição, ações) e pela própria largura máxima de conteúdo — o App Shell não impõe um `max-width` global.
+
+Em mobile, o Shell exibe a barra compacta descrita em §13.
+
+A área autenticada reutiliza a mesma linguagem de aurora do Auth (§4), com intensidade sensivelmente menor — uma textura de fundo, não um elemento de destaque. Essa camada é puramente decorativa e fica atrás de Sidebar e conteúdo; ambos permanecem superfícies opacas e não perdem contraste por causa dela. A decoração não participa da hierarquia funcional da tela.
+
 ---
 
-## 13. Top Bar
+## 13. Barra superior (mobile)
 
-A barra superior poderá conter:
+Diferente do App Shell em desktop, uma barra superior compacta existe **somente** em mobile/tablet (abaixo do breakpoint descrito em §40), quando a Sidebar fixa não está visível.
 
+Ela contém apenas:
+
+- botão de menu (abre o Drawer de navegação, ver §15)
 - identidade Taskly
-- contexto atual
-- ações rápidas
-- menu do usuário
 
-Evitar excesso de elementos.
-
-A navegação principal de projetos deverá permanecer prioritariamente na Sidebar.
+Marca, navegação e menu do usuário já vivem na Sidebar em qualquer largura — a barra mobile existe só para abrir o Drawer, não para replicar ações ou contexto. Contexto de página e ações específicas ficam no cabeçalho de cada página, não numa barra global.
 
 ---
 
@@ -321,20 +333,21 @@ A navegação principal de projetos deverá permanecer prioritariamente na Sideb
 
 Em desktop, a Sidebar será fixa.
 
-Largura aproximada:
+Largura final:
 
 ```text
-240px a 260px
+256px
 ```
 
 Deve conter:
 
 - marca Taskly
-- acesso aos projetos
-- criação de projeto
-- lista de projetos
-- identificação visual através de cor
-- área do usuário quando apropriado
+- acesso aos projetos (a própria seção "Projetos" já é o link para a listagem — não existe uma página separada de "Visão geral")
+- criação rápida de projeto ("+" ao lado da seção Projetos)
+- lista real de projetos, cada um com um indicador de cor (dot) e nome
+- área do usuário no rodapé (menu com opção de sair)
+
+O projeto ativo é determinado pela rota atual (`/projects/:projectId`), nunca por um estado replicado em store — evita duas fontes de verdade para a mesma informação. A lista de projetos rola de forma independente entre a marca e a área do usuário, que permanece sempre visível.
 
 A Sidebar deve permitir acesso rápido entre projetos.
 
@@ -750,6 +763,8 @@ Preferir Toast discreto para confirmações rápidas.
 
 Evitar excesso de notificações.
 
+O Toast de sucesso combina um ícone de confirmação, um título curto e uma descrição contextual (por exemplo, citando o nome do recurso afetado), sobre fundo neutro (nunca uma cor sólida de destaque). Ele nunca é usado para erros de validação de campo (ver §33).
+
 ---
 
 ## 37. Error Feedback
@@ -782,7 +797,9 @@ Exemplos:
 - excluir tarefa
 - remover attachment quando o contexto justificar
 
-O texto deve deixar claro o impacto da ação.
+O texto deve deixar claro o impacto da ação, citando o nome do recurso afetado (ex.: `Excluir "Marketing"?`).
+
+A confirmação é feita por um diálogo dedicado (ConfirmDialog, construído sobre o mesmo Dialog nativo de §10), nunca `window.confirm()`. A ação destrutiva usa uma variante de botão própria, visualmente distinta das ações primária/secundária, e o diálogo permanece aberto com uma mensagem de erro caso a exclusão falhe.
 
 ---
 
@@ -811,15 +828,14 @@ Evitar animações decorativas que prejudiquem produtividade.
 
 ## 40. Responsividade
 
-Breakpoints conceituais:
+Breakpoint definido entre Sidebar fixa e Drawer de navegação:
 
 ```text
-Desktop: >= 1200px
-Tablet:  768px – 1199px
-Mobile:  < 768px
+Sidebar fixa (desktop): >= 1024px (breakpoint `lg`)
+Drawer de navegação:    <  1024px
 ```
 
-Esses valores podem ser ajustados de acordo com o comportamento real da interface.
+Abaixo de 1024px, tablet e mobile compartilham o mesmo padrão de navegação (Drawer); grids de conteúdo (ex.: Projects, ver §14 e a listagem de projetos) se adaptam de forma independente (1/2/3 colunas) conforme a largura disponível, sem um breakpoint dedicado próprio.
 
 Não construir o frontend apenas para uma resolução específica.
 
@@ -922,9 +938,9 @@ Possíveis casos:
 
 - usuário autenticado
 - sessão
-- dados globais realmente compartilhados
+- dados globais realmente compartilhados (ex.: a lista de Projects, compartilhada entre Sidebar, listagem e detalhe)
 
-Não colocar automaticamente cada recurso em uma Store.
+Não colocar automaticamente cada recurso em uma Store. Estado de UI puramente efêmero (ex.: Toast, modal aberto/fechado) não precisa de Pinia — um composable simples é suficiente quando o estado não é dado de domínio.
 
 ---
 
@@ -978,18 +994,27 @@ A página de login deve ser:
 - limpa
 - moderna
 - coerente com o branding Taskly
-- simples
 - responsiva
 
 Não precisa utilizar a estrutura de Sidebar da aplicação autenticada.
 
 Deve conter somente elementos necessários.
 
+Login e Registro reaproveitam a marca (`Brand`, §51) e os mesmos tokens visuais (superfície, borda, texto) da aplicação autenticada — sem duplicar uma implementação própria da marca ou uma paleta paralela.
+
+Usa a linguagem de aurora descrita em §4 com a intensidade decorativa mais alta do produto, reforçando a chegada do usuário sem comprometer a legibilidade do formulário.
+
+Em desktop, a composição se divide em duas áreas: um lado institucional (marca, uma badge curta, um headline, um texto de apoio e alguns highlights curtos do produto) e o formulário num card de superfície (`surface`) — o card permanece sempre a área de maior contraste e foco visual da tela.
+
+Em mobile, a composição simplifica para um único card centralizado (o lado institucional não aparece) — a marca acompanha o formulário, que continua a única prioridade em telas pequenas.
+
 ---
 
 ## 50. Registro
 
 O cadastro deve manter a mesma identidade do login.
+
+Compartilha a mesma composição de duas áreas do Login (§49) — incluindo o lado institucional em desktop e a simplificação para um único card em mobile.
 
 Deve apresentar claramente:
 
@@ -1004,11 +1029,11 @@ Deve apresentar claramente:
 
 ## 51. Identidade Taskly
 
-O nome Taskly deve ser apresentado de maneira consistente.
+O nome Taskly é apresentado de maneira consistente através de um único componente de marca reutilizável (`Brand`), usado na Sidebar, na barra mobile e nas páginas de Login/Registro.
 
-Uma marca tipográfica simples poderá ser utilizada inicialmente.
+A marca combina um selo quadrado-arredondado na cor Primary com um ícone de check (Lucide) em branco, seguido do nome "Taskly" em peso semibold — inteiramente tipográfico/iconográfico, sem logotipo externo ou assets de imagem.
 
-Não é obrigatório desenvolver um logotipo complexo.
+No lado institucional do Auth (§49), a marca ganha mais presença: aparece maior, acompanhada de uma badge curta, um headline e alguns highlights do produto — reforçando a identidade sem introduzir uma segunda marca ou paleta.
 
 A identidade deve priorizar produto e funcionalidade.
 

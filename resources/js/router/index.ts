@@ -6,9 +6,24 @@ export const router = createRouter({
     routes: [
         {
             path: '/',
-            name: 'home',
-            component: () => import('../pages/FoundationCheck.vue'),
+            redirect: { name: 'projects.index' },
+        },
+        {
+            path: '/projects',
+            component: () => import('../components/app/AppShell.vue'),
             meta: { requiresAuth: true },
+            children: [
+                {
+                    path: '',
+                    name: 'projects.index',
+                    component: () => import('../pages/projects/ProjectsIndexPage.vue'),
+                },
+                {
+                    path: ':projectId',
+                    name: 'projects.show',
+                    component: () => import('../pages/projects/ProjectDetailPage.vue'),
+                },
+            ],
         },
         {
             path: '/login',
@@ -36,7 +51,7 @@ router.beforeEach((to) => {
     }
 
     if (to.meta.guestOnly && auth.status === 'authenticated') {
-        return { name: 'home' };
+        return { name: 'projects.index' };
     }
 
     return true;
