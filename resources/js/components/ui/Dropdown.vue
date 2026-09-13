@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
 
-withDefaults(
+const props = withDefaults(
     defineProps<{
         /** Opens above the trigger instead of below — for triggers pinned near the bottom of the viewport. */
         openUpward?: boolean;
         /** Sizes the trigger to its content and right-aligns the menu, instead of both stretching to the parent's full width — for compact triggers like an icon button. */
         inline?: boolean;
+        /** Closes the panel on any click inside `content` — the right default for a menu of one-shot actions. Set to `false` for content with its own interactive state (e.g. a multi-select of checkboxes) that must stay open across clicks. */
+        closeOnContentClick?: boolean;
     }>(),
-    { openUpward: false, inline: false },
+    { openUpward: false, inline: false, closeOnContentClick: true },
 );
 
 const open = ref(false);
@@ -20,6 +22,12 @@ function toggle(): void {
 
 function close(): void {
     open.value = false;
+}
+
+function onContentClick(): void {
+    if (props.closeOnContentClick) {
+        close();
+    }
 }
 
 function onDocumentClick(event: MouseEvent): void {
@@ -59,7 +67,7 @@ onBeforeUnmount(() => {
             role="menu"
             class="absolute z-20 rounded-lg border border-border bg-surface py-1 shadow-md"
             :class="[openUpward ? 'bottom-full mb-2' : 'top-full mt-2', inline ? 'right-0 min-w-[160px]' : 'inset-x-0']"
-            @click="close"
+            @click="onContentClick"
         >
             <slot name="content" />
         </div>

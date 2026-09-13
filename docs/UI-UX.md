@@ -409,33 +409,21 @@ Evitar ocupar espaço excessivo.
 
 ## 18. Métricas
 
-Quando implementadas, as métricas poderão mostrar:
-
-- Total
-- Em andamento
-- Concluídas
-- Atrasadas
-
-Devem funcionar como informação rápida.
-
-Evitar cards gigantes de dashboard.
-
-O objetivo é produtividade, não construir uma tela de BI.
+`TaskMetrics.vue` mostra 4 indicadores compactos: Total (inclui canceladas), Em andamento, Concluídas, Atrasadas — sempre derivados da coleção completa do Project (nunca da lista filtrada, mesmo com filtros ativos). Layout: grid 2x2 no mobile, uma linha (`flex-wrap`) a partir de `sm:`. Informação rápida, texto sempre presente (número + rótulo, nunca só cor) — sem virar dashboard de BI.
 
 ---
 
 ## 19. Toolbar
 
-A Toolbar deverá acomodar conforme implementação:
+`TaskFilters.vue` é uma única toolbar (card com borda/sombra), na ordem:
 
-- busca
-- filtro por status
-- filtro por tags
-- filtro por prazo
-- seletor List / Kanban
-- botão New Task
+```text
+[ Buscar tarefas... ] [ Todos os status ] [ Tags ] [ Atrasadas ] [ Limpar filtros ] [ X de Y tarefas ]
+```
 
-O botão de criação de tarefa deve possuir bom destaque.
+A partir de `md:` (768px), tudo numa única linha — a busca é o único controle flexível (`flex-1 min-w-0`, absorve o espaço disponível), os demais mantêm largura natural (`shrink-0`), e "Limpar filtros"/contador ficam alinhados à direita (`ml-auto`) quando existem. Abaixo de `md:`, empilha: busca (full-width) → status (full-width) → Tags+Atrasadas (agrupados) → Limpar+contador (agrupados, quebrando entre si só se necessário) — sem scroll horizontal da página.
+
+Filtro por prazo foi implementado como toggle "Somente atrasadas" (booleano), não um intervalo de datas. Botão "Nova tarefa" continua no cabeçalho do Project (não na toolbar de filtros) — ver §17.
 
 ---
 
@@ -569,6 +557,8 @@ O layout do Kanban responde à largura real do container (via CSS container quer
 - **Desktop** (`>= 1100px` de container): 4 colunas lado a lado, drag-and-drop ativo (ver §27).
 - **Tablet** (`>= 640px` e `< 1100px`): grid de 2 colunas por linha, todas as 4 colunas visíveis, cards com largura confortável.
 - **Mobile** (`< 640px`): uma única coluna por vez, ocupando praticamente 100% da largura — nunca 4 colunas espremidas nem dependência de scroll horizontal do board inteiro. Acima da coluna, um seletor de status (pills/tabs compactas) com label + contagem por status permite trocar qual coluna é exibida; a seleção é evidente por múltiplos sinais visuais (fundo preenchido, peso da fonte), não só cor. A troca de status nesse tamanho de tela é sempre feita pelo menu "..." (sem drag).
+
+Quando o filtro global de Status (§19) está ativo, a aba mobile se alinha automaticamente ao status filtrado assim que ele muda — mas só nesse momento: o usuário continua livre para tocar em qualquer outra aba depois, e essa escolha manual não é revertida sozinha enquanto o filtro global não mudar de novo. Limpar o filtro de Status não move a aba para lugar nenhum.
 
 ---
 
@@ -708,6 +698,8 @@ Criar primeira tarefa
 Mostrar mensagem clara e permitir limpar filtros.
 
 Empty States devem orientar uma próxima ação.
+
+**Estado implementado:** dois estados distintos, nunca confundidos. Project realmente vazio (nenhuma Task cadastrada) mostra só "Este projeto ainda não possui tarefas." — sem Métricas/Filtros visíveis, já que não há nada para filtrar. Filtro sem resultado (há Tasks no Project, mas nenhuma atende aos filtros ativos) mostra "Nenhuma tarefa encontrada com estes filtros." + botão "Limpar filtros" — Métricas e a barra de filtros continuam visíveis acima, para o usuário entender e ajustar o que filtrou; List/Kanban não são renderizados nesse estado.
 
 ---
 

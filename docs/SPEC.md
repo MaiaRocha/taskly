@@ -797,6 +797,8 @@ A busca deve ser limitada aos dados pertencentes ao usuário autenticado.
 
 Não carregar dados de outros usuários para depois filtrar no frontend.
 
+**Estado implementado (Fase 10):** a busca foi entregue client-side, sobre a coleção de Tasks que `GET /api/projects/{project}/tasks` já retorna completa e sem paginação para o Project do usuário autenticado — nenhum dado de outro usuário é buscado ou carregado, a preocupação de segurança do `SHOULD` acima já é respeitada pela própria arquitetura existente. Campos pesquisados: `title`, `short_description`, `description` e nome das Tags da Task — case-insensitive e accent-insensitive (`"reuniao"` encontra `"Reunião"`). **Se paginação for introduzida no futuro, busca/filtros devem migrar para o backend** — a lógica está isolada num único composable (`useTaskFilters`) exatamente para tornar essa migração possível sem reescrever a UI (ver `docs/DECISIONS.md` §27).
+
 ---
 
 ## 23. Filtros
@@ -812,6 +814,8 @@ Filtros previstos:
 Filtros devem funcionar junto da busca quando aplicável.
 
 A implementação deve favorecer URLs ou estado previsível quando isso melhorar usabilidade, sem adicionar complexidade desnecessária.
+
+**Estado implementado (Fase 10):** filtro de status (seleção única), Tags (multi-seleção, semântica **OR** entre Tags escolhidas) e "Somente atrasadas" (via `task.overdue`, calculado pelo backend), combináveis entre si em **AND**, e combináveis com a busca. Todos representados na URL (`?q=&status=&tag=&overdue=1`, `tag` repetível) via `router.replace`, preservando `view=kanban` e qualquer outro parâmetro — mesmo padrão já usado pela alternância List/Kanban. Filtros funcionam identicamente em List e Kanban.
 
 ---
 
@@ -831,6 +835,8 @@ atrasadas
 As métricas devem derivar dos dados reais.
 
 Não persistir métricas que possam ser calculadas de forma simples.
+
+**Estado implementado (Fase 10):** as 4 métricas são derivadas localmente (um `reduce` sobre a coleção de Tasks já carregada), sem endpoint novo — `total` sempre conta a coleção completa do Project (inclusive Tasks canceladas), nunca a lista filtrada; aplicar um filtro nunca altera as métricas exibidas.
 
 ---
 
@@ -1299,6 +1305,8 @@ Quando implementados, criar testes para:
 - combinação de filtros
 - isolamento por usuário
 
+**Estado implementado (Fase 10):** busca/filtros são client-side (ver §22/§23) — não há endpoint novo, então não há teste Pest novo aplicável. "Isolamento por usuário" continua garantido pelo endpoint já existente e já testado (`GET /api/projects/{project}/tasks`, escopado ao Project autorizado): o filtro no frontend nunca tem acesso a nenhuma Task fora dessa coleção já autorizada.
+
 ---
 
 ## 49. Laravel Pint
@@ -1736,6 +1744,8 @@ Implementar SHOULDs prioritários:
 - refinamentos de formulário
 
 Avaliar Precognition somente aqui ou depois.
+
+**Estado implementado:** busca, filtros (status/Tags/atrasada, combináveis), métricas e a distinção entre Project vazio e "nenhum resultado para os filtros" foram entregues nesta fase (ver §22-§24 e `docs/DECISIONS.md` §27). Refinamentos de formulário e avaliação do Precognition não fizeram parte do escopo desta fase.
 
 ---
 

@@ -806,3 +806,47 @@ O Kanban agrupa Tasks por `status` inteiramente no cliente, sem chamada adiciona
 ### `Modal.vue` — suporte correto a `open=true` já no mount
 
 A primitiva `Modal.vue` foi corrigida para sincronizar o `<dialog>` nativo corretamente em dois casos: a transição reativa `open: false → true` de um componente já montado (via `watch`), e um componente que nasce com `open` já `true` (via `onMounted`, já que um `watch` sem `immediate: true` não dispara nesse caso, e um `watch` com `immediate: true` rodaria cedo demais, antes do `<dialog>` existir no DOM). Ambos os caminhos chamam a mesma função central (`syncDialogState`), que nunca chama `showModal()` em um dialog já aberto nem `close()` em um já fechado. Isso torna a primitiva robusta independentemente de o caller usar `v-if` para gate de montagem — nenhum caller precisou mudar por causa desta correção.
+
+---
+
+## 27. Frontend — Busca, Filtros e Métricas de Tasks (Fase 10)
+
+### Filtragem client-side, não backend
+
+Busca textual e filtros (status/Tags/atrasada) são resolvidos inteiramente no cliente, sobre a coleção de Tasks que `GET /api/projects/{project}/tasks` já retorna completa e sem paginação para aquele Project. Nenhum parâmetro de busca/filtro foi adicionado ao backend nesta fase. A preocupação de segurança por trás da recomendação original do SPEC (nunca carregar dados de outro usuário só para filtrar no frontend) não se aplica aqui: o filtro atua exclusivamente sobre uma coleção que o backend já escopou e autorizou para o usuário atual — nenhum dado adicional é buscado. **Se paginação for introduzida no futuro**, busca/filtros deixam de fazer sentido client-side e devem migrar para query params no backend — a lógica de filtragem já está isolada num único composable (`useTaskFilters`) para tornar essa migração possível sem tocar em `TaskList`/`TaskBoard`/`TaskCard`.
+
+### URL como estado canônico; busca como exceção transitória
+
+`status`, `tag` (repetível) e `overdue` são sempre computeds derivados de `route.query` — nunca duplicados em estado local. A busca textual (`q`) é a única exceção: `searchInput` é um `ref` local que responde a cada tecla (para `filteredTasks` filtrar instantaneamente), sincronizado para `q` na URL só depois de um debounce de ~300ms. Toda escrita de query usa `router.replace` (nunca `push`, mesmo padrão já usado por `view=kanban`) e sempre parte de `{ ...route.query }` lido no momento exato da escrita — nunca uma cópia capturada antes do debounce — para que uma mudança de filtro feita enquanto a busca ainda está "pendente" nunca seja apagada quando o timer da busca finalmente disparar.
+
+### Contrato de query
+
+```text
+view=kanban                              (já existente; ausência = Lista)
+q=<texto>
+status=not_started|in_progress|completed|cancelled
+tag=<inteiro positivo>                   (repetível: tag=3&tag=7)
+overdue=1
+```
+
+Valor de query sintaticamente inválido é ignorado na lógica de parsing — nunca lançado como erro, nunca reescrito/canonicalizado automaticamente na URL.
+
+### Semântica dos filtros
+
+Tags múltiplas combinam em **OR** (a Task entra se tiver ao menos uma das Tags selecionadas); os diferentes eixos (texto, status, Tags, atrasada) combinam em **AND** entre si.
+
+### `selectedTagIds` vs `effectiveTagIds`
+
+`selectedTagIds` são os ids de `tag` sintaticamente válidos vindos da URL, nunca validados contra as Tags reais do usuário. `effectiveTagIds` é o subconjunto que efetivamente corresponde a uma Tag da sessão atual — antes de `tagsStore` carregar, `effectiveTagIds` usa `selectedTagIds` provisoriamente (a filtragem já funciona corretamente nesse meio-tempo, pois compara contra `task.tags`, não contra a lista global); depois de carregado, vira a interseção real. Só `effectiveTagIds` conta como filtro ativo — um `?tag=999999` que não corresponde a nenhuma Tag real nunca aparenta um filtro em vigor, e nunca é removido automaticamente da URL.
+
+### Métricas sempre sobre o Project completo
+
+`TaskMetrics` deriva sempre da coleção bruta de Tasks do Project (nunca de `filteredTasks`) — total (inclui canceladas), em andamento, concluídas, atrasadas (via `task.overdue`, calculado pelo backend, nunca recalculado no frontend). Aplicar um filtro nunca altera essas quatro métricas; o efeito do filtro aparece só no contador "X de Y tarefas" da barra de filtros.
+
+### Tasks Store permanece alheio a filtros
+
+`stores/tasks.ts` não tem nenhuma noção de busca/filtro — `useTaskFilters` lê a coleção bruta do store e devolve `filteredTasks` como um `computed` derivado, nunca um segundo array armazenado em algum lugar. O store continua sendo a única fonte de verdade dos dados; o composable é só uma projeção sobre ela.
+
+### `Dropdown.vue`: `closeOnContentClick` e `inline` para o filtro de Tags
+
+`Dropdown.vue` ganhou uma prop aditiva `closeOnContentClick` (default `true`, preservando o comportamento de todo caller existente) para suportar um painel com estado interativo próprio (checkboxes de Tags) que não deve fechar a cada clique. O filtro de Tags usa `<Dropdown inline :close-on-content-click="false">` — o `inline` é obrigatório aqui: sem ele, a raiz do `Dropdown` assume `w-full` (comportamento já existente, pensado para os usos "soltos" do componente) e distorce o dimensionamento da toolbar horizontal.

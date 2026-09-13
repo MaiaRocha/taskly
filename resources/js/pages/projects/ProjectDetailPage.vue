@@ -4,12 +4,15 @@ import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import ProjectFormModal from '../../components/projects/ProjectFormModal.vue';
 import TaskBoard from '../../components/tasks/TaskBoard.vue';
+import TaskFilters from '../../components/tasks/TaskFilters.vue';
 import TaskList from '../../components/tasks/TaskList.vue';
+import TaskMetrics from '../../components/tasks/TaskMetrics.vue';
 import TaskModal from '../../components/tasks/TaskModal.vue';
 import Button from '../../components/ui/Button.vue';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue';
 import Skeleton from '../../components/ui/Skeleton.vue';
 import Spinner from '../../components/ui/Spinner.vue';
+import { useTaskFilters } from '../../composables/useTaskFilters';
 import { useToast } from '../../composables/useToast';
 import { describeFormError } from '../../lib/form-errors';
 import { useProjectsStore } from '../../stores/projects';
@@ -87,6 +90,26 @@ const tasks = computed<Task[]>(() => {
 
     return tasksStore.tasksByProject[projectId.value] ?? [];
 });
+
+const {
+    searchInput,
+    statusFilter,
+    effectiveTagIds,
+    overdueOnly,
+    filteredTasks,
+    metrics,
+    hasActiveFilters,
+    resultCountLabel,
+    setStatus,
+    toggleTag,
+    clearTags,
+    setOverdue,
+    clearFilters,
+} = useTaskFilters(
+    tasks,
+    computed(() => tagsStore.tags),
+    computed(() => tagsStore.status),
+);
 
 // View state lives entirely in the URL (`?view=kanban`) — any other/missing
 // value falls back to List. Switching views never touches the Tasks/Tags
@@ -326,7 +349,27 @@ async function onConfirmDelete(): Promise<void> {
             </p>
 
             <div v-else class="mt-8">
-                <div class="inline-flex rounded-lg border border-border bg-surface p-1" role="group" aria-label="Alternar visualização">
+                <TaskMetrics :metrics="metrics" />
+
+                <TaskFilters
+                    class="mt-4"
+                    :search-input="searchInput"
+                    :status-filter="statusFilter"
+                    :available-tags="tagsStore.tags"
+                    :effective-tag-ids="effectiveTagIds"
+                    :tags-loading="tagsStore.status === 'loading'"
+                    :overdue-only="overdueOnly"
+                    :has-active-filters="hasActiveFilters"
+                    :result-count-label="resultCountLabel"
+                    @update:search-input="searchInput = $event"
+                    @update:status-filter="setStatus($event)"
+                    @toggle-tag="toggleTag($event)"
+                    @clear-tags="clearTags()"
+                    @update:overdue-only="setOverdue($event)"
+                    @clear-filters="clearFilters()"
+                />
+
+                <div class="mt-4 inline-flex rounded-lg border border-border bg-surface p-1" role="group" aria-label="Alternar visualização">
                     <button
                         type="button"
                         class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition duration-150"
@@ -349,8 +392,26 @@ async function onConfirmDelete(): Promise<void> {
                     </button>
                 </div>
 
-                <TaskList v-if="view === 'list'" class="mt-4" :tasks="tasks" @edit="openEditTask" />
-                <TaskBoard v-else class="mt-4" :project-id="project.id" :tasks="tasks" @edit="openEditTask" />
+                <div v-if="hasActiveFilters && filteredTasks.length === 0" class="mt-8 flex flex-col items-center gap-3 text-center">
+                    <p class="text-sm text-text-secondary">Nenhuma tarefa encontrada com estes filtros.</p>
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                        @click="clearFilters()"
+                    >
+                        Limpar filtros
+                    </button>
+                </div>
+
+                <TaskList v-else-if="view === 'list'" class="mt-4" :tasks="filteredTasks" @edit="openEditTask" />
+                <TaskBoard
+                    v-else
+                    class="mt-4"
+                    :project-id="project.id"
+                    :tasks="filteredTasks"
+                    :preferred-mobile-status="statusFilter"
+                    @edit="openEditTask"
+                />
             </div>
 
             <ProjectFormModal

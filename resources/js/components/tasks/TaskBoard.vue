@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { TASK_STATUS_LABELS, TASK_STATUS_ORDER } from '../../lib/taskStatus';
 import { useTasksStore } from '../../stores/tasks';
 import type { Task, TaskStatus } from '../../types/task';
@@ -9,6 +9,8 @@ import TaskBoardColumn from './TaskBoardColumn.vue';
 const props = defineProps<{
     projectId: number;
     tasks: Task[];
+    /** The global status filter (if any) — used only to align the mobile tab once when it changes; never written back to. */
+    preferredMobileStatus?: TaskStatus | null;
 }>();
 
 const emit = defineEmits<{
@@ -39,11 +41,30 @@ const columns = computed(() => {
 
 // Mobile shows exactly one column at a time (see template): a small UI-only
 // selector picks which one. This is deliberately NOT persisted to the URL or
-// a store — it's ephemeral view state local to this component, computed
-// once at mount (first status that already has Tasks, else `not_started`)
-// and never recomputed afterwards, so loading more Tasks later never yanks
-// the selection out from under the user.
-const selectedStatus = ref<TaskStatus>(TASK_STATUS_ORDER.find((status) => columns.value[status].length > 0) ?? 'not_started');
+// a store — it's ephemeral view state local to this component. On mount, a
+// concrete `preferredMobileStatus` (the global status filter, if active)
+// wins over the usual heuristic (first status that already has Tasks, else
+// `not_started`) — opening the board with that filter already applied
+// should show the matching column first.
+const selectedStatus = ref<TaskStatus>(
+    props.preferredMobileStatus ?? TASK_STATUS_ORDER.find((status) => columns.value[status].length > 0) ?? 'not_started',
+);
+
+// Realigns the mobile tab only when the global status FILTER itself changes
+// to a new, concrete status — never in reaction to `tasks`/`columns`
+// recomputing (e.g. a Task moving in/out of the selected column), and never
+// when the filter is cleared (`next === null`), which leaves the user's
+// current tab exactly where it was. The user's own manual tap only ever
+// assigns `selectedStatus.value` directly (see the template below) and
+// never writes back to `preferredMobileStatus` — one-way, no loop.
+watch(
+    () => props.preferredMobileStatus,
+    (next, previous) => {
+        if (next !== null && next !== undefined && next !== previous) {
+            selectedStatus.value = next;
+        }
+    },
+);
 
 // A Set (not a single id) — different Tasks can have PATCHes in flight at
 // the same time (e.g. moving Task A, then moving Task B before A resolves),

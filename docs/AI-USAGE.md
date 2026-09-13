@@ -83,6 +83,16 @@ Alguns trechos curtos e representativos desse padrão (não os prompts completos
 
 **H. Isolamento de sessão** — os stores de Tasks e Tags usam um `sessionEpoch` (e, no caso de Tasks, uma `generation` por Project) para impedir que uma requisição iniciada antes de um logout aplique seus dados depois que a sessão já terminou.
 
+**I. Planejamento da Fase 10 reiniciado** — a primeira resposta de planejamento para a Fase 10 devolveu, por engano, um plano antigo referente à Fase 9. A revisão humana rejeitou esse plano, e um novo planejamento foi feito do zero sobre a base real (`b8a0895`), passando por três rodadas de revisão crítica antes da aprovação.
+
+**J. Busca/filtros: decisão client-side documentada como divergência** — `docs/SPEC.md` recomendava busca executada no backend. A decisão final foi implementar client-side, já que o Project carrega sua coleção de Tasks completa e sem paginação — a preocupação de segurança por trás da recomendação original (não carregar dados de outro usuário para filtrar no frontend) não se aplicava a essa arquitetura. A divergência foi registrada explicitamente em `docs/SPEC.md`/`docs/DECISIONS.md`, com o caminho de migração para backend caso paginação seja introduzida no futuro — não foi silenciosamente ignorada.
+
+**K. Contrato de URL refinado em múltiplas rodadas** — o desenho de `useTaskFilters` passou por revisões sucessivas antes da implementação: separação entre `selectedTagIds` (bruto da URL) e `effectiveTagIds` (validado contra as Tags reais da sessão), serialização de Tags como array na URL, e principalmente os cenários de corrida do debounce da busca (ex.: digitar e clicar "Limpar filtros" antes de 300ms) foram identificados e endereçados antes de qualquer linha de código ser escrita.
+
+**L. Checkpoints agrupados por afinidade** — os checkpoints A (engine/URL), B (UI de busca/filtros) e C (métricas) foram implementados numa única rodada para acelerar a execução, por serem partes da mesma camada sem efeito colateral entre si. O checkpoint D (integração com List/Kanban/mobile) foi mantido separado por envolver mudança de comportamento observável (Cards realmente filtrados, alinhamento do Kanban mobile).
+
+**M. Bug real de layout encontrado em QA visual** — depois da implementação do checkpoint de UI de filtros, a validação humana no navegador mostrou que os controles não ficavam todos na mesma linha no desktop, embora as classes parecessem corretas na leitura do código. O diagnóstico (inspeção do componente `Dropdown` real, não suposição) encontrou a causa: o filtro de Tags usava `<Dropdown>` sem a prop `inline`, e a primitiva assume `w-full` por padrão nesse caso — distorcendo o dimensionamento da toolbar. A correção foi mínima (adicionar `inline`), e o layout final foi validado manualmente em desktop e mobile.
+
 ## Revisão crítica da IA
 
 Nenhum output do agente foi aceito automaticamente. Além dos exemplos acima:
@@ -122,11 +132,14 @@ Fases já registradas no histórico do repositório (commits reais):
 - **Tags API** — Tags e sincronização Task ↔ Tag.
 - **Attachments API** — upload/listagem/download/exclusão privados de anexos.
 - **Projects Frontend** — App Shell, Sidebar, autenticação, CRUD de Projects no SPA.
-- **Tasks UI / Kanban / Attachments Frontend (Fase 9)** — descrita em detalhe abaixo, por ser a fase mais recente e com contexto completo disponível.
+- **Tasks UI / Kanban / Attachments Frontend (Fase 9)** — descrita em detalhe abaixo.
+- **Busca, Filtros e Métricas de Tasks (Fase 10)** — descrita em detalhe abaixo, por ser a fase mais recente e com contexto completo disponível.
 
 Para as fases anteriores à Fase 9, este documento registra apenas o que é factualmente verificável pelo histórico de commits e pela documentação existente (`docs/DECISIONS.md` §21-§24) — sem reconstruir prompts ou decisões daquelas fases por suposição.
 
 **Fase 9**, executada em checkpoints (A a G), cobriu: Tasks Store/Tags Store com proteção contra resposta obsoleta; List View e `TaskCard`; Task Modal (create/edit/delete); Tags (seleção + criação inline); Kanban com troca de status via menu e via drag-and-drop nativo em desktop, responsivo em 3 níveis; Attachments (upload/list/download/delete) com lifecycle isolado por componente; e o fechamento com robustecimento da primitiva `Modal.vue`, revisão de código morto e atualização desta documentação. Os exemplos B a H acima pertencem todos a esta fase.
+
+**Fase 10**, executada em checkpoints (A+B+C numa rodada, D, e E de fechamento), cobriu: engine de busca/filtros client-side (`useTaskFilters`) com URL como estado canônico e busca com debounce protegido contra corrida; toolbar de filtros (`TaskFilters.vue`) e métricas (`TaskMetrics.vue`); integração real com List/Kanban (incluindo o alinhamento do Kanban mobile ao filtro global de status); distinção entre Project vazio e filtro sem resultado; e o fechamento com revisão completa do código, segurança e esta documentação. Os exemplos I a M acima pertencem todos a esta fase.
 
 ## Limitações e responsabilidade humana
 
