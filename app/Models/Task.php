@@ -95,4 +95,14 @@ class Task extends Model
     {
         return $this->hasMany(Attachment::class);
     }
+
+    /**
+     * No ordering baked in here, deliberately — the timeline read (newest
+     * first) is a presentation concern for whichever query needs it, not a
+     * rule of the relationship itself.
+     */
+    public function activities(): HasMany
+    {
+        return $this->hasMany(TaskActivity::class);
+    }
 }

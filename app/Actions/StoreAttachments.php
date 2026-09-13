@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\TaskActivityType;
 use App\Models\Attachment;
 use App\Models\Task;
 use Illuminate\Http\UploadedFile;
@@ -15,6 +16,8 @@ use Throwable;
 
 class StoreAttachments
 {
+    public function __construct(private readonly RecordTaskActivity $recordTaskActivity) {}
+
     /**
      * Store the given uploaded files on the task, as a single all-or-nothing
      * batch: either every file is written and persisted, or none is.
@@ -37,7 +40,7 @@ class StoreAttachments
                     ]);
                 }
 
-                return collect($files)->map(function (UploadedFile $file) use ($lockedTask, $disk, &$storedPaths) {
+                $attachments = collect($files)->map(function (UploadedFile $file) use ($lockedTask, $disk, &$storedPaths) {
                     $path = $file->store("attachments/{$lockedTask->id}", $disk);
 
                     if ($path === false) {
@@ -53,6 +56,13 @@ class StoreAttachments
                         'size' => $file->getSize(),
                     ]);
                 });
+
+                // One grouped activity for the whole batch — never one per file.
+                ($this->recordTaskActivity)($lockedTask, TaskActivityType::AttachmentsAdded, [
+                    'files' => $attachments->map(fn (Attachment $attachment) => ['name' => $attachment->original_name])->all(),
+                ]);
+
+                return $attachments;
             });
         } catch (Throwable $e) {
             if ($storedPaths !== []) {

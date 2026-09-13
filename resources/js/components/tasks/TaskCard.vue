@@ -2,7 +2,7 @@
 import { AlertTriangle, Calendar, MoreHorizontal, Paperclip } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { formatTaskDueDate } from '../../lib/datetime';
-import { TASK_STATUS_LABELS, TASK_STATUS_ORDER } from '../../lib/taskStatus';
+import { TASK_STATUS_DOT_STYLES, TASK_STATUS_LABELS, TASK_STATUS_ORDER } from '../../lib/taskStatus';
 import type { Task, TaskStatus } from '../../types/task';
 import Dropdown from '../ui/Dropdown.vue';
 import IconButton from '../ui/IconButton.vue';
@@ -12,7 +12,7 @@ import TaskStatusBadge from './TaskStatusBadge.vue';
 const props = defineProps<{
     task: Task;
     variant: 'list' | 'kanban';
-    /** True while THIS Task's own status change is in flight (kanban only) — replaces the "..." trigger with a small spinner instead of graying out the whole card. */
+    /** True while THIS Task's own status change is in flight — replaces the "..." trigger (kanban) or the status badge's label (list) with a small spinner, instead of graying out the whole card. */
     moving?: boolean;
 }>();
 
@@ -39,6 +39,16 @@ const supportsFineDrag = typeof window !== 'undefined' && typeof window.matchMed
 const isDraggable = computed(() => props.variant === 'kanban' && !props.moving && supportsFineDrag);
 
 const isDragging = ref(false);
+
+// Same fix as TaskStatusBadge.vue's List dropdown, same root cause: this
+// wrapper has no stacking context of its own beyond a flat z-10, so every
+// Card's "..." wrapper ties with every other Card's at that same level —
+// CSS breaks the tie by DOM order, meaning a LATER Card's (even closed)
+// wrapper always painted over an EARLIER Card's open "Mover para" panel,
+// regardless of the panel's own (locally-scoped) z-20. Elevating this
+// wrapper only while ITS OWN menu is open guarantees the open Card always
+// wins over every closed sibling below it.
+const isMenuOpen = ref(false);
 
 // A native drag sequence does not, by itself, also fire a `click` on the
 // dragged element in any browser tested against — but this flag is kept as
@@ -107,7 +117,20 @@ function onTriggerClick(): void {
             <h3 class="min-w-0 flex-1 text-sm font-semibold text-text-primary" :class="variant === 'kanban' ? 'pr-9' : ''">
                 {{ task.title }}
             </h3>
-            <TaskStatusBadge v-if="variant === 'list'" :status="task.status" />
+            <!--
+                TaskStatusBadge owns its own stacking wrapper internally
+                (elevated only while ITS OWN panel is open) — both to sit
+                above this card's stretched trigger button below, and to
+                avoid a later sibling Card's own (closed) badge painting over
+                THIS card's open dropdown panel. See TaskStatusBadge.vue.
+            -->
+            <TaskStatusBadge
+                v-if="variant === 'list'"
+                :status="task.status"
+                interactive
+                :loading="moving"
+                @change="(status) => emit('move', task, status)"
+            />
         </div>
 
         <p v-if="variant === 'list' && task.short_description" class="mt-1 line-clamp-2 text-sm text-text-secondary">
@@ -142,10 +165,10 @@ function onTriggerClick(): void {
             </span>
         </div>
 
-        <div v-if="variant === 'kanban'" class="absolute top-2 right-2 z-10 cursor-auto">
+        <div v-if="variant === 'kanban'" class="absolute top-2 right-2 cursor-auto" :class="isMenuOpen ? 'z-30' : 'z-10'">
             <Spinner v-if="moving" :size="16" />
 
-            <Dropdown v-else inline>
+            <Dropdown v-else inline @update:open="isMenuOpen = $event">
                 <template #trigger="{ toggle, open }">
                     <IconButton
                         :label="`Ações da tarefa ${task.title}`"
@@ -163,9 +186,10 @@ function onTriggerClick(): void {
                         v-for="status in otherStatuses"
                         :key="status"
                         type="button"
-                        class="flex w-full items-center px-3 py-2 text-left text-sm text-text-primary transition duration-150 hover:bg-surface-hover"
+                        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition duration-150 hover:bg-surface-hover"
                         @click="emit('move', task, status)"
                     >
+                        <span class="h-2 w-2 shrink-0 rounded-full" :class="TASK_STATUS_DOT_STYLES[status]" aria-hidden="true" />
                         {{ TASK_STATUS_LABELS[status] }}
                     </button>
                 </template>

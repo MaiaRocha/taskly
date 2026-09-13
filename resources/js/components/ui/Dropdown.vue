@@ -13,6 +13,11 @@ const props = withDefaults(
     { openUpward: false, inline: false, closeOnContentClick: true },
 );
 
+const emit = defineEmits<{
+    /** Mirrors the internal `open` state outward — additive, optional; existing callers that don't listen are unaffected. Lets a caller that renders several Dropdowns side by side (e.g. one per list row) raise its OWN stacking above its siblings only while its own panel is open, instead of every instance needing a permanently-elevated z-index. */
+    'update:open': [value: boolean];
+}>();
+
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
@@ -50,6 +55,8 @@ watch(open, (isOpen) => {
         document.removeEventListener('click', onDocumentClick);
         document.removeEventListener('keydown', onKeydown);
     }
+
+    emit('update:open', isOpen);
 });
 
 onBeforeUnmount(() => {

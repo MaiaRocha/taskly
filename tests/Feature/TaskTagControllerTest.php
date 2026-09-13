@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\TaskActivityType;
 use App\Models\Attachment;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 
@@ -174,6 +176,99 @@ describe('sync', function () {
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors('tag_ids.0');
         expect($task->tags()->count())->toBe(1);
+    });
+});
+
+describe('tags_changed activity', function () {
+    test('adding a tag records a tags_changed with it in added and an empty removed', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = $user->tags()->create(['name' => 'Urgente', 'color' => '#EC4899']);
+
+        $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [$tag->id],
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::TagsChanged);
+        expect($activity->data)->toBe([
+            'added' => [['id' => $tag->id, 'name' => 'Urgente', 'color' => '#EC4899']],
+            'removed' => [],
+        ]);
+    });
+
+    test('removing a tag records it in removed with an empty added', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = $user->tags()->create(['name' => 'Planejamento', 'color' => '#3B82F6']);
+        $task->tags()->attach($tag);
+
+        $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [],
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::TagsChanged);
+        expect($activity->data)->toBe([
+            'added' => [],
+            'removed' => [['id' => $tag->id, 'name' => 'Planejamento', 'color' => '#3B82F6']],
+        ]);
+    });
+
+    test('adding and removing in the same sync records exactly one activity with both', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $kept = $user->tags()->create(['name' => 'Kept', 'color' => '#22C55E']);
+        $removed = $user->tags()->create(['name' => 'Planejamento', 'color' => '#3B82F6']);
+        $added = $user->tags()->create(['name' => 'Urgente', 'color' => '#EC4899']);
+        $task->tags()->attach([$kept->id, $removed->id]);
+
+        $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [$kept->id, $added->id],
+        ])->assertOk();
+
+        expect(TaskActivity::count())->toBe(1);
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::TagsChanged);
+        expect($activity->data)->toBe([
+            'added' => [['id' => $added->id, 'name' => 'Urgente', 'color' => '#EC4899']],
+            'removed' => [['id' => $removed->id, 'name' => 'Planejamento', 'color' => '#3B82F6']],
+        ]);
+    });
+
+    test('syncing the exact same set of tags records no activity', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = $user->tags()->create(['name' => 'Urgente', 'color' => '#EC4899']);
+        $task->tags()->attach($tag);
+
+        $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [$tag->id],
+        ])->assertOk();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('added/removed snapshots are ordered by tag id regardless of request order', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tagA = $user->tags()->create(['name' => 'Alpha', 'color' => '#EC4899']);
+        $tagB = $user->tags()->create(['name' => 'Beta', 'color' => '#3B82F6']);
+
+        // Request order deliberately reversed relative to id order.
+        $this->actingAs($user)->putJson("/api/tasks/{$task->id}/tags", [
+            'tag_ids' => [$tagB->id, $tagA->id],
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect(array_column($activity->data['added'], 'id'))->toBe([$tagA->id, $tagB->id]);
     });
 });
 

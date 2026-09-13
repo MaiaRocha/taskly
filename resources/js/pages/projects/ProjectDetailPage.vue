@@ -403,7 +403,7 @@ async function onConfirmDelete(): Promise<void> {
                     </button>
                 </div>
 
-                <TaskList v-else-if="view === 'list'" class="mt-4" :tasks="filteredTasks" @edit="openEditTask" />
+                <TaskList v-else-if="view === 'list'" class="mt-4" :project-id="project.id" :tasks="filteredTasks" @edit="openEditTask" />
                 <TaskBoard
                     v-else
                     class="mt-4"

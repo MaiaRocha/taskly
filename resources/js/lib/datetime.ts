@@ -26,3 +26,33 @@ export function toDateTimeLocalValue(apiIso: string): string {
 export function formatTaskDueDate(apiIso: string): string {
     return new Date(apiIso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 }
+
+const SHORT_MONTH_NAMES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/**
+ * Formats an ISO-8601 UTC timestamp as a short, relative-day label for the
+ * Task Activity timeline — "Hoje, 15:42" / "Ontem, 18:20" / "13 set, 14:53"
+ * (or "13 set 2025, 14:53" for a different year). Built manually instead of
+ * `toLocaleDateString`'s pt-BR long form ("13 de set. de 2026") to keep the
+ * compact style the timeline wants. Always in the browser's local timezone.
+ */
+export function formatActivityTimestamp(apiIso: string): string {
+    const date = new Date(apiIso);
+    const now = new Date();
+    const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+    const dayDiff = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+
+    if (dayDiff === 0) {
+        return `Hoje, ${time}`;
+    }
+
+    if (dayDiff === 1) {
+        return `Ontem, ${time}`;
+    }
+
+    const year = date.getFullYear() === now.getFullYear() ? '' : ` ${date.getFullYear()}`;
+
+    return `${date.getDate()} ${SHORT_MONTH_NAMES[date.getMonth()]}${year}, ${time}`;
+}

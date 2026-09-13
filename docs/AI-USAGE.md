@@ -93,6 +93,24 @@ Alguns trechos curtos e representativos desse padrão (não os prompts completos
 
 **M. Bug real de layout encontrado em QA visual** — depois da implementação do checkpoint de UI de filtros, a validação humana no navegador mostrou que os controles não ficavam todos na mesma linha no desktop, embora as classes parecessem corretas na leitura do código. O diagnóstico (inspeção do componente `Dropdown` real, não suposição) encontrou a causa: o filtro de Tags usava `<Dropdown>` sem a prop `inline`, e a primitiva assume `w-full` por padrão nesse caso — distorcendo o dimensionamento da toolbar. A correção foi mínima (adicionar `inline`), e o layout final foi validado manualmente em desktop e mobile.
 
+**N. Task Activity History escolhido como diferencial além do mínimo** — a Fase 11 introduziu uma funcionalidade não exigida pelo escopo mínimo do MVP (`docs/SPEC.md` §76): um histórico de atividades por Task, somente leitura. O planejamento inicial foi revisado criticamente antes de qualquer implementação, resultando em aprovação "com 3 ajustes obrigatórios" — entre eles, um índice composto (`task_id, created_at, id`) que estava ausente do desenho original da migration e foi adicionado antes do Checkpoint A, já que é exatamente o índice que a única query da tabela (timeline de uma Task, mais recente primeiro) precisa.
+
+**O. UTC ISO-8601 com `Z` como formato único da feature** — decidido que todo timestamp dentro de Activities (snapshots de `due_at` e o `created_at` do próprio Resource) usaria `toIso8601ZuluString()` (`2026-09-15T21:00:00Z`), e não o `.000000Z` padrão do restante da aplicação — verificado em teste de contrato exato antes de generalizar a decisão para toda a feature.
+
+**P. Risco de filesystem identificado antes do commit, corrigido em B.1** — a primeira versão da exclusão de Attachment (Checkpoint B) apagava o arquivo físico antes de commitar a exclusão da linha no banco. A própria revisão identificou e reportou o risco (uma falha na transação depois do arquivo já apagado deixaria uma linha válida apontando para um arquivo inexistente) em vez de seguir adiante silenciosamente. O Checkpoint B.1 inverteu a ordem: banco primeiro (linha + Activity, atômico), limpeza física do arquivo só depois do commit, e só best-effort — uma falha aí é registrada em log, nunca vira exceção.
+
+**Q. Lacuna real na exclusão de Tag, encontrada por revisão** — a revisão do Checkpoint B identificou que excluir uma Tag globalmente a desassociava de toda Task via cascade de FK do banco, sem nenhum caminho de código de aplicação envolvido — logo, sem nenhuma Activity sendo registrada nessas Tasks. Reportado antes de agir; corrigido no Checkpoint B.1, lendo as Tasks associadas à Tag antes do delete (o cascade destrói o pivot, única evidência de quais Tasks tinham aquela Tag) e registrando uma `tags_changed` por Task afetada, na mesma transação do delete.
+
+**R. Estratégia de refresh reduzida após investigar o lifecycle real do Modal** — o desenho inicial do Checkpoint D cogitava refresh explícito para toda mutação relevante (status, due_at, Tags, Attachments). Uma investigação direta do código real (`TaskModal.vue`, `ProjectDetailPage.vue`) mostrou que salvar uma Task — create ou edit, incluindo o sync de Tags — sempre fecha o Modal, desmontando a Timeline inteira; reabrir a mesma Task já dispara um lazy load do zero. O escopo do refresh explícito foi então reduzido, corretamente, só para Attachments (upload/delete) — o único fluxo real que muta a Task com o Modal ainda aberto.
+
+**S. Bug real de concorrência (`isLoadingMore` preso), encontrado e corrigido antes da homologação** — uma revisão dedicada de concorrência em `TaskActivityTimeline.vue` encontrou que `isLoadingMore` podia ficar `true` para sempre em dois cenários: um refresh invalidando um load-more em andamento, e uma troca de Task durante uma requisição em voo. O guard de resposta obsoleta (`isStale`) pulava deliberadamente o reset dessa flag para uma resposta descartada — correto nesse ponto isolado — mas nada mais a resetava depois disso. Corrigido antes da homologação manual, adicionando o reset explícito exatamente nos dois pontos que invalidam essas requisições (o próprio `refresh()` e a troca de `taskId`).
+
+**T. Homologação manual confirmou o comportamento esperado** — a validação humana no navegador (incluindo a aba Network) confirmou lazy loading, renderização correta de cada tipo de evento, contador, integração no Task Modal e o refresh explícito de Attachments funcionando como projetado, sem regressão visível no Kanban ou no Task Modal.
+
+**U. 500 no Kanban durante QA — ambiente local, não bug de aplicação** — durante a homologação manual do Checkpoint D, o Kanban retornou 500 por uma migration ainda não aplicada no banco de desenvolvimento local (a suíte de testes já rodava normalmente via `LazilyRefreshDatabase`, que aplica migrations no banco de teste automaticamente). Diagnosticado corretamente como pendência de ambiente, não regressão de código, e resolvido executando a migration localmente.
+
+**V. Oportunidade de UX identificada antes do fechamento da Fase 11** — durante a revisão final, antes do commit da fase, a revisão humana notou que alterar o status de uma Task na Lista exigia abrir o Task Modal inteiro, mesmo sendo uma ação simples e frequente. Implementada como Fase 11.1: a badge de status da Lista virou um controle inline (menu com os 4 status), reutilizando o mesmo `PATCH` parcial que o Kanban já usava — sem endpoint novo, sem lógica de backend duplicada, e sem alterar o comportamento do Kanban.
+
 ## Revisão crítica da IA
 
 Nenhum output do agente foi aceito automaticamente. Além dos exemplos acima:
@@ -108,7 +126,7 @@ Nenhum output do agente foi aceito automaticamente. Além dos exemplos acima:
 - `php artisan test --compact` (Pest)
 - `git diff --check`
 
-**Manuais**, feitos pelo humano no navegador, incluindo (conforme o checkpoint): desktop e mobile, aba Network, criar/editar/excluir Task, Tags (seleção e criação), tarefas atrasadas (`overdue`), Kanban (drag e menu de mudança de status), empilhamento de `ConfirmDialog`, upload/download/exclusão de anexos, e navegação entre Tasks/Projects para checar isolamento de estado.
+**Manuais**, feitos pelo humano no navegador, incluindo (conforme o checkpoint): desktop e mobile, aba Network, criar/editar/excluir Task, Tags (seleção e criação), tarefas atrasadas (`overdue`), Kanban (drag e menu de mudança de status), empilhamento de `ConfirmDialog`, upload/download/exclusão de anexos, histórico de atividades da Task (lazy loading via Network, renderização de cada tipo de evento, refresh após upload/exclusão de anexo), e navegação entre Tasks/Projects para checar isolamento de estado.
 
 Os checks automáticos nunca substituíram a validação manual — vários dos bugs reais encontrados (ex.: item C) só apareceram em teste manual, com todos os checks automáticos passando.
 
@@ -133,13 +151,16 @@ Fases já registradas no histórico do repositório (commits reais):
 - **Attachments API** — upload/listagem/download/exclusão privados de anexos.
 - **Projects Frontend** — App Shell, Sidebar, autenticação, CRUD de Projects no SPA.
 - **Tasks UI / Kanban / Attachments Frontend (Fase 9)** — descrita em detalhe abaixo.
-- **Busca, Filtros e Métricas de Tasks (Fase 10)** — descrita em detalhe abaixo, por ser a fase mais recente e com contexto completo disponível.
+- **Busca, Filtros e Métricas de Tasks (Fase 10)** — descrita em detalhe abaixo.
+- **Task Activity History (Fase 11)** — descrita em detalhe abaixo, por ser a fase mais recente e com contexto completo disponível.
 
 Para as fases anteriores à Fase 9, este documento registra apenas o que é factualmente verificável pelo histórico de commits e pela documentação existente (`docs/DECISIONS.md` §21-§24) — sem reconstruir prompts ou decisões daquelas fases por suposição.
 
 **Fase 9**, executada em checkpoints (A a G), cobriu: Tasks Store/Tags Store com proteção contra resposta obsoleta; List View e `TaskCard`; Task Modal (create/edit/delete); Tags (seleção + criação inline); Kanban com troca de status via menu e via drag-and-drop nativo em desktop, responsivo em 3 níveis; Attachments (upload/list/download/delete) com lifecycle isolado por componente; e o fechamento com robustecimento da primitiva `Modal.vue`, revisão de código morto e atualização desta documentação. Os exemplos B a H acima pertencem todos a esta fase.
 
 **Fase 10**, executada em checkpoints (A+B+C numa rodada, D, e E de fechamento), cobriu: engine de busca/filtros client-side (`useTaskFilters`) com URL como estado canônico e busca com debounce protegido contra corrida; toolbar de filtros (`TaskFilters.vue`) e métricas (`TaskMetrics.vue`); integração real com List/Kanban (incluindo o alinhamento do Kanban mobile ao filtro global de status); distinção entre Project vazio e filtro sem resultado; e o fechamento com revisão completa do código, segurança e esta documentação. Os exemplos I a M acima pertencem todos a esta fase.
+
+**Fase 11**, executada em checkpoints (planejamento; A — domínio; B — geração de eventos; B.1 — hardening de consistência; C — API + Timeline; D — refresh + UX final; E de fechamento; 11.1 — status inline na Lista), cobriu: a tabela/Model/enum/Action de `TaskActivity`; integração da geração de eventos nos fluxos reais de Task/Tags/Attachments/Tag; um endpoint somente leitura paginado; uma Timeline no Task Modal com lazy loading, paginação por botão e refresh explícito restrito ao único fluxo que o exige (Attachments); o fechamento com revisão de concorrência, portabilidade de teste de filesystem e esta documentação; e, como pequena evolução de UX antes do commit, a badge de status da Lista virando um controle inline de troca de status. Os exemplos N a V acima pertencem todos a esta fase.
 
 ## Limitações e responsabilidade humana
 

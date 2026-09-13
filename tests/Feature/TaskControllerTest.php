@@ -1,9 +1,12 @@
 <?php
 
+use App\Actions\RecordTaskActivity;
+use App\Enums\TaskActivityType;
 use App\Enums\TaskStatus;
 use App\Models\Attachment;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 
@@ -209,6 +212,44 @@ describe('store', function () {
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors('status');
+    });
+});
+
+describe('store — task_created activity', function () {
+    test('creating a task records exactly one task_created activity with empty data', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+
+        $this->actingAs($user)->postJson("/api/projects/{$project->id}/tasks", [
+            'title' => 'Design landing page',
+        ])->assertCreated();
+
+        $task = Task::sole();
+        $activity = TaskActivity::sole();
+
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::TaskCreated);
+        expect($activity->data)->toBe([]);
+    });
+
+    test('if recording the activity fails, the task is not left created', function () {
+        $this->app->bind(RecordTaskActivity::class, fn () => new class
+        {
+            public function __invoke(...$args)
+            {
+                throw new RuntimeException('Simulated activity-recording failure.');
+            }
+        });
+
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+
+        $this->actingAs($user)->postJson("/api/projects/{$project->id}/tasks", [
+            'title' => 'Should not survive',
+        ])->assertServerError();
+
+        expect(Task::count())->toBe(0);
+        expect(TaskActivity::count())->toBe(0);
     });
 });
 
@@ -726,6 +767,124 @@ describe('update', function () {
         $this->actingAs($user)
             ->patchJson('/api/tasks/999999', ['title' => 'Whatever'])
             ->assertNotFound();
+    });
+});
+
+describe('update — status_changed / due_at_changed activities', function () {
+    test('updating fields other than status/due_at records no activity', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['title' => 'Old title']);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'title' => 'New title',
+            'short_description' => 'New short',
+            'description' => 'New description',
+        ])->assertOk();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('changing status records a status_changed activity with the correct from/to', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['status' => TaskStatus::NotStarted]);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'status' => 'in_progress',
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::StatusChanged);
+        expect($activity->data)->toBe(['from' => 'not_started', 'to' => 'in_progress']);
+    });
+
+    test('sending the same status again records no activity', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['status' => TaskStatus::InProgress]);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'status' => 'in_progress',
+        ])->assertOk();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('setting due_at from null records a due_at_changed with from null', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['due_at' => null]);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'due_at' => '2026-09-17T17:00:00Z',
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::DueAtChanged);
+        expect($activity->data)->toBe(['from' => null, 'to' => '2026-09-17T17:00:00Z']);
+    });
+
+    test('changing due_at from one instant to another records both snapshots as UTC', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['due_at' => '2026-09-15T21:00:00Z']);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'due_at' => '2026-09-17T17:00:00Z',
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::DueAtChanged);
+        expect($activity->data)->toBe(['from' => '2026-09-15T21:00:00Z', 'to' => '2026-09-17T17:00:00Z']);
+    });
+
+    test('clearing due_at to null records a due_at_changed with to null', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create(['due_at' => '2026-09-15T21:00:00Z']);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'due_at' => null,
+        ])->assertOk();
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::DueAtChanged);
+        expect($activity->data)->toBe(['from' => '2026-09-15T21:00:00Z', 'to' => null]);
+    });
+
+    test('re-sending the same instant in a different offset notation records no activity', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        // 21:00 UTC, stored via the model's UTC-normalizing mutator.
+        $task = Task::factory()->for($project)->create(['due_at' => '2026-09-15T21:00:00Z']);
+
+        // The same instant, written with an explicit non-UTC offset.
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'due_at' => '2026-09-15T18:00:00-03:00',
+        ])->assertOk();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('changing status and due_at in the same request records both, status_changed first', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create([
+            'status' => TaskStatus::NotStarted,
+            'due_at' => null,
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/tasks/{$task->id}", [
+            'status' => 'in_progress',
+            'due_at' => '2026-09-17T17:00:00Z',
+        ])->assertOk();
+
+        $activities = TaskActivity::orderBy('id')->get();
+        expect($activities)->toHaveCount(2);
+        expect($activities[0]->type)->toBe(TaskActivityType::StatusChanged);
+        expect($activities[1]->type)->toBe(TaskActivityType::DueAtChanged);
     });
 });
 

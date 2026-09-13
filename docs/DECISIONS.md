@@ -850,3 +850,51 @@ Tags múltiplas combinam em **OR** (a Task entra se tiver ao menos uma das Tags 
 ### `Dropdown.vue`: `closeOnContentClick` e `inline` para o filtro de Tags
 
 `Dropdown.vue` ganhou uma prop aditiva `closeOnContentClick` (default `true`, preservando o comportamento de todo caller existente) para suportar um painel com estado interativo próprio (checkboxes de Tags) que não deve fechar a cada clique. O filtro de Tags usa `<Dropdown inline :close-on-content-click="false">` — o `inline` é obrigatório aqui: sem ele, a raiz do `Dropdown` assume `w-full` (comportamento já existente, pensado para os usos "soltos" do componente) e distorce o dimensionamento da toolbar horizontal.
+
+---
+
+## 28. Task Activity History (Fase 11)
+
+### Activity explícita, não auditoria genérica
+
+O histórico registra apenas 6 eventos de negócio pré-definidos (`task_created`, `status_changed`, `due_at_changed`, `tags_changed`, `attachments_added`, `attachment_removed`) — não é um audit log genérico de toda alteração em toda tabela. Título, descrição e Project da Task nunca geram Activity. Nenhum pacote externo de auditoria foi avaliado ou instalado; a tabela `task_activities` e o Model `TaskActivity` são construídos diretamente no domínio da aplicação.
+
+### `RecordTaskActivity` só persiste — o caller decide o que aconteceu
+
+A Action `RecordTaskActivity` é deliberadamente pequena: recebe a Task, o tipo do evento e o payload já prontos, e apenas cria o registro. Ela nunca decide se algo mudou (diffing de status/due_at, cálculo de quais Tags foram adicionadas/removidas) — essa decisão pertence sempre ao caller (`TaskController`, `TaskTagController`, `TagController`, `StoreAttachments`, `AttachmentController`), que já tem os valores antes/depois em mãos no momento em que chama a Action. Isso evita uma segunda cópia da lógica de "o que mudou" dentro da própria Action.
+
+### Snapshots, não referências vivas
+
+`tags_changed` e `attachments_added`/`attachment_removed` guardam um snapshot dos dados relevantes (id/nome/cor da Tag; nome original do Attachment) no momento do evento, em vez de uma referência à Tag/Attachment atual. O histórico permanece legível mesmo depois que a Tag é excluída ou o Attachment é removido — sem esse snapshot, o evento ficaria órfão ou exigiria um join contra um registro que pode não existir mais.
+
+### Events imutáveis; backend é a única fonte de verdade
+
+`TaskActivity` desabilita `updated_at` (`const UPDATED_AT = null`) e não expõe nenhum endpoint de update/delete — uma vez criada, uma Activity nunca é alterada. O frontend nunca insere uma Activity otimisticamente no array local após uma mutation bem-sucedida (`activities.unshift(...)` foi deliberadamente evitado): o backend decide se o evento existe, define o snapshot e o timestamp; o frontend sempre busca (ou re-busca) o que o backend já persistiu.
+
+### API somente leitura, lazy loading, paginação 20/página
+
+`GET /api/tasks/{task}/activities` é o único endpoint — sem `store`/`update`/`destroy`, autorizado pela mesma `TaskPolicy::view` (nenhuma Policy paralela para Activity). Paginação usa o `paginate(20)` padrão do Laravel, ordenado por `created_at DESC, id DESC` (o segundo critério desempata timestamps iguais). O frontend carrega isso de forma preguiçosa: abrir o Task Modal nunca dispara esse GET — só a primeira expansão da seção "Atividade" o faz, e reabrir a seção sem nenhuma mutação nova não repete a requisição.
+
+### UTC ISO-8601 consistente em todo o payload
+
+Todo snapshot de data dentro de `data` (ex.: `due_at_changed`) e o próprio `created_at` do Resource usam o mesmo formato — `toIso8601ZuluString()` (`2026-09-15T21:00:00Z`) — deliberadamente diferente do `.000000Z` padrão do restante da aplicação, para manter um único formato dentro de toda a feature de Activities (a coluna `created_at` de `task_activities` não tem precisão de sub-segundo mesmo, tornando a fração `.000000Z` só uma precisão aparente). O frontend converte para o fuso do navegador só na exibição.
+
+### Attachment delete — DB primeiro, filesystem best-effort depois
+
+A exclusão de um Attachment confirma primeiro a transação de banco (remoção da linha + `attachment_removed`) e só depois tenta a limpeza física do arquivo. Uma falha na limpeza física é apenas registrada via `Log::warning` — nunca desfaz o delete já commitado, nunca lança exceção para o cliente. Essa ordem (DB como fonte de verdade, filesystem como best-effort) já era a filosofia de `DeleteTask`/`DeleteProject` e foi estendida à exclusão individual de Attachment nesta fase, revertendo a ordem original (filesystem primeiro) usada na primeira versão do Checkpoint B.
+
+### Tag delete registra `tags_changed` em cada Task afetada
+
+Como a FK `tag_task.tag_id` tem `cascadeOnDelete()`, excluir uma Tag globalmente desassocia-a de toda Task por puro cascade de banco, sem nenhum código de aplicação no meio. `TagController::destroy` agora lê as Tasks associadas à Tag **antes** de excluí-la (o cascade destrói a única evidência de quais Tasks tinham aquela Tag) e registra uma `tags_changed` por Task afetada, dentro da mesma transação do delete — sem Observer/Event/Listener, só uma leitura explícita seguida do delete, ambos no mesmo `DB::transaction()`.
+
+### Refresh explícito só onde o Modal realmente permanece aberto
+
+Investigado o lifecycle real do Task Modal: salvar uma Task (create/edit, incluindo sync de Tags) sempre fecha o Modal, o que desmonta a Timeline inteira — reabrir a mesma Task já dispara um lazy load do zero, sem precisar de nenhum mecanismo de refresh artificial. O único fluxo que muta a Task com o Modal (e potencialmente a Timeline) ainda montado é upload/delete de Attachment, que ocorre fora do submit do formulário. Por isso existe só um sinal explícito e monotônico (`activityRefreshKey`, incrementado por `TaskModal.vue` quando `TaskAttachments.vue` emite `changed`) — não um `watch` amplo sobre o objeto `Task`, não polling, não Pinia. A Timeline reage a esse sinal com uma regra pequena: se nunca foi aberta, ignora; se está carregada mas colapsada, só marca "precisa atualizar" e busca a página 1 na próxima expansão; se está aberta, busca a página 1 imediatamente e substitui o conteúdo (nunca faz append em um refresh).
+
+### Teste de falha de filesystem — mock determinístico, não `chmod`
+
+O teste que simula uma falha física de exclusão de arquivo usava `chmod` para remover permissão de escrita do diretório. Revisado no Checkpoint E: esse mecanismo depende do processo de teste rodar como usuário não-root, o que não pode ser assumido em todo ambiente de CI (um container rodando como root ignora permissões de arquivo, tornando o teste um falso-positivo silencioso em vez de vermelho). Substituído por um mock do facade `Storage` (`Storage::shouldReceive('disk')->andReturn(...)`, com `exists`/`delete` mockados via Mockery, já disponível como dependência de teste do Laravel) — determinístico em qualquer ambiente, sem depender de permissões reais de SO.
+
+### Status inline na Lista reaproveita o fluxo de update já existente (Fase 11.1)
+
+A badge de status da Lista virou um controle interativo (`TaskStatusBadge.vue`, prop `interactive`), mas não introduz nenhum caminho novo de escrita: dispara o mesmo `tasksStore.updateTask(projectId, taskId, { status })` — `PATCH /api/tasks/{task}` com payload parcial — que o menu "Mover para" do Kanban já usa. O backend continua a única fonte de verdade para `status`, `completed_at`, `overdue` e o registro de `status_changed` (Fase 11); o frontend nunca recalcula nenhum desses valores nem insere a Activity otimisticamente. A concorrência por Task (um `Set<number>` de ids em atualização) foi replicada em `TaskList.vue` no mesmo formato já usado por `TaskBoard.vue`, em vez de extraída para um composable/store compartilhado — a duplicação é de poucas linhas e as duas Views têm ciclos de vida de card diferentes o suficiente (drag-and-drop vs. clique simples) para não justificar uma abstração comum ainda.

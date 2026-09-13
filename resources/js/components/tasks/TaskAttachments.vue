@@ -38,6 +38,11 @@ const props = defineProps<{
     taskId: number;
 }>();
 
+const emit = defineEmits<{
+    /** Fired after a successful upload or delete — never on failure. Lets TaskModal signal TaskActivityTimeline that a new Activity may exist, without this component knowing anything about Activities itself. */
+    changed: [];
+}>();
+
 const tasksStore = useTasksStore();
 
 const attachments = ref<Attachment[]>([]);
@@ -223,6 +228,7 @@ async function onFilesSelected(event: Event): Promise<void> {
 
         attachments.value = [...attachments.value, ...data.data];
         tasksStore.setTaskAttachmentsCount(props.projectId, capturedTaskId, attachments.value.length);
+        emit('changed');
     } catch (error) {
         if (isStale(capturedTaskId, capturedGeneration)) {
             return;
@@ -268,6 +274,7 @@ async function confirmDelete(): Promise<void> {
         attachments.value = attachments.value.filter((item) => item.id !== attachment.id);
         tasksStore.setTaskAttachmentsCount(props.projectId, capturedTaskId, attachments.value.length);
         isConfirmOpen.value = false;
+        emit('changed');
     } catch (error) {
         if (isStale(capturedTaskId, capturedGeneration)) {
             return;

@@ -467,10 +467,11 @@ O Modal (via `TaskForm.vue`) suporta:
 - prazo
 - tags (seleção + criação inline)
 - anexos (`TaskAttachments.vue`, apenas em modo edição — ver §32)
+- histórico de atividades (`TaskActivityTimeline.vue`, apenas em modo edição — ver §56)
 - ações de salvar
 - exclusão (ação discreta no rodapé do formulário, não no header)
 
-Anexos não fazem parte do submit dos campos da tarefa — têm ciclo de vida próprio (endpoints dedicados), e só aparecem depois que a tarefa já existe (ver §32).
+Anexos e histórico de atividades não fazem parte do submit dos campos da tarefa — têm ciclo de vida próprio (endpoints dedicados/somente leitura), e só aparecem depois que a tarefa já existe (ver §32 e §56).
 
 ---
 
@@ -579,6 +580,8 @@ A tarefa deve ser facilmente identificável e editável.
 Desktop pode utilizar uma organização semelhante a tabela/lista estruturada.
 
 Mobile deve adaptar o layout sem exigir scroll horizontal desnecessário.
+
+**Estado implementado (Fase 11.1):** a badge de status do Card, na Lista, é um controle interativo (`TaskStatusBadge.vue` com `interactive`), não apenas informativo — reaproveita a mesma cor/label já usadas no badge estático (nenhuma segunda fonte de estilo). Um clique abre um pequeno menu (via `Dropdown.vue` já existente) com os 4 status, dot colorido + label + check no status atual; selecionar o mesmo status atual não faz nada. Durante a atualização, a badge mostra um spinner pequeno no lugar do label e fica desabilitada só para aquela Task (outras Tasks continuam interativas). Em caso de erro, o status anterior permanece e um toast de erro já existente é exibido. Em mobile (~390px), a badge e o menu continuam cabendo na viewport, sem scroll horizontal e com alvo de toque confortável. A badge no cabeçalho de cada coluna do Kanban continua puramente estática — o único ajuste visual feito no Kanban (Fase 11.1, polish) foi adicionar o mesmo dot colorido (fonte única em `lib/taskStatus.ts`) às opções do menu "Mover para", sem alterar seu comportamento, título ou o fluxo de PATCH já existente.
 
 ---
 
@@ -1088,7 +1091,24 @@ A interface só deve ser considerada pronta quando:
 
 ---
 
-## 56. Princípio final
+## 56. Task Activity History — Timeline no Task Modal (Fase 11)
+
+**Estado implementado (Fase 11):** o Task Modal ganhou uma seção "Atividade", posicionada depois de Anexos e antes da ação de excluir a tarefa, visível apenas em modo edição (uma tarefa ainda não persistida não tem histórico).
+
+- **Colapsada por padrão.** O header é um `<button>` real ("Atividade" + contador, `aria-expanded`) — abrir o Modal nunca busca o histórico; só a primeira expansão da seção dispara a requisição.
+- **Contador só depois do primeiro carregamento.** Antes de expandir, o header mostra só "Atividade"; depois da primeira página carregar, passa a mostrar "Atividade · N" usando o total retornado pela API.
+- **Loading**: skeleton pequeno (2-3 itens fake), nunca um spinner que bloqueia o Modal inteiro.
+- **Timeline vertical discreta**: círculo pequeno com ícone Lucide por tipo de evento + linha conectora fina, título em destaque, detalhe secundário, timestamp suave — sem card por Activity, sem sombra por item.
+- **Tags e Anexos usam snapshot**: mesmo depois de uma Tag ser excluída ou um Anexo ser removido, o nome/cor exibido no histórico continua vindo do snapshot gravado no momento do evento, nunca de uma nova consulta ao estado atual.
+- **Nomes de arquivo responsivos**: nomes longos quebram em várias linhas (`break-words`/`overflow-wrap: anywhere`) em vez de truncar com reticências + tooltip — um tooltip não é acionável por toque em mobile, então truncar tornaria o nome ilegível nesse caso.
+- **Empty state**: "Nenhuma atividade registrada ainda." para uma Task sem eventos (por exemplo, criada antes desta fase existir) — nunca tratado como erro.
+- **Error/retry confinado à seção**: uma falha no primeiro carregamento mostra "Não foi possível carregar o histórico." + "Tentar novamente", sem afetar o restante do Modal; uma falha ao atualizar o histórico depois de uma mutação (ver `docs/DECISIONS.md` §28) mantém os dados antigos visíveis, com um aviso discreto e um retry, também sem derrubar o Modal.
+- **"Carregar atividades anteriores"**: sem infinite scroll — um botão explícito busca a próxima página e faz append; desabilitado durante a própria requisição para evitar cliques duplicados; desaparece quando não há mais páginas.
+- **Desktop e mobile (~390px)**: mesma largura de Modal já aprovada (nenhuma seção nova alarga o Modal); em mobile, status/prazo quebram em texto corrido sem scroll horizontal, Tags em `flex-wrap`, e o botão de carregar mais permanece confortável ao toque.
+
+---
+
+## 57. Princípio final
 
 O Taskly deve parecer:
 

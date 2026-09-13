@@ -1,9 +1,13 @@
 <?php
 
+use App\Actions\RecordTaskActivity;
+use App\Enums\TaskActivityType;
 use App\Models\Attachment;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\User;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -107,6 +111,66 @@ describe('upload', function () {
             expect($attachment->task_id)->toBe($task->id);
             $disk->assertExists($attachment->path);
         });
+    });
+});
+
+describe('attachments_added activity', function () {
+    test('a single file upload records one attachments_added with that file', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $file = UploadedFile::fake()->create('briefing.pdf', 100);
+
+        $this->actingAs($user)->post("/api/tasks/{$task->id}/attachments", [
+            'files' => [$file],
+        ])->assertCreated();
+
+        $activity = TaskActivity::sole();
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::AttachmentsAdded);
+        expect($activity->data)->toBe(['files' => [['name' => 'briefing.pdf']]]);
+    });
+
+    test('multiple files in one request record exactly one grouped activity', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+
+        $files = [
+            UploadedFile::fake()->create('briefing.pdf', 50),
+            UploadedFile::fake()->create('mockup.png', 20),
+            UploadedFile::fake()->create('contrato.docx', 10),
+        ];
+
+        $this->actingAs($user)->post("/api/tasks/{$task->id}/attachments", [
+            'files' => $files,
+        ])->assertCreated();
+
+        expect(TaskActivity::count())->toBe(1);
+
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::AttachmentsAdded);
+        expect($activity->data)->toBe(['files' => [
+            ['name' => 'briefing.pdf'],
+            ['name' => 'mockup.png'],
+            ['name' => 'contrato.docx'],
+        ]]);
+    });
+
+    test('a rejected upload (validation failure) records no activity', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $file = UploadedFile::fake()->create('malware.exe', 10);
+
+        $this->actingAs($user)->post("/api/tasks/{$task->id}/attachments", [
+            'files' => [$file],
+        ])->assertUnprocessable();
+
+        expect(TaskActivity::count())->toBe(0);
     });
 });
 
@@ -653,6 +717,124 @@ describe('destroy', function () {
         $user = User::factory()->create();
 
         $this->actingAs($user)->deleteJson('/api/attachments/999999')->assertNotFound();
+    });
+});
+
+describe('attachment_removed activity', function () {
+    test('deleting an attachment records one attachment_removed with the original filename snapshot', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $disk = Storage::disk(config('filesystems.attachments_disk'));
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $path = "attachments/{$task->id}/briefing.pdf";
+        $disk->put($path, 'x');
+        $attachment = $task->attachments()->create([
+            'original_name' => 'briefing.pdf',
+            'path' => $path,
+            'mime_type' => 'application/pdf',
+            'size' => 1,
+        ]);
+
+        $this->actingAs($user)->deleteJson("/api/attachments/{$attachment->id}")->assertNoContent();
+
+        $activity = TaskActivity::sole();
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::AttachmentRemoved);
+        expect($activity->data)->toBe(['name' => 'briefing.pdf']);
+        $this->assertDatabaseMissing('attachments', ['id' => $attachment->id]);
+        $disk->assertMissing($path);
+    });
+
+    test('a failed delete (forbidden) records no activity', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $stranger = User::factory()->create();
+        $project = Project::factory()->create();
+        $task = Task::factory()->for($project)->create();
+        $attachment = $task->attachments()->create([
+            'original_name' => 'file.txt',
+            'path' => "attachments/{$task->id}/file.txt",
+            'mime_type' => 'text/plain',
+            'size' => 1,
+        ]);
+
+        $this->actingAs($stranger)->deleteJson("/api/attachments/{$attachment->id}")->assertForbidden();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('if the DB transaction fails, the row, activity, and physical file are all left untouched', function () {
+        Storage::fake(config('filesystems.attachments_disk'));
+        $disk = Storage::disk(config('filesystems.attachments_disk'));
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $path = "attachments/{$task->id}/briefing.pdf";
+        $disk->put($path, 'x');
+        $attachment = $task->attachments()->create([
+            'original_name' => 'briefing.pdf',
+            'path' => $path,
+            'mime_type' => 'application/pdf',
+            'size' => 1,
+        ]);
+
+        $this->app->bind(RecordTaskActivity::class, fn () => new class
+        {
+            public function __invoke(...$args)
+            {
+                throw new RuntimeException('Simulated activity-recording failure.');
+            }
+        });
+
+        $this->actingAs($user)
+            ->deleteJson("/api/attachments/{$attachment->id}")
+            ->assertServerError();
+
+        // The DB transaction rolled back — the row is still there — and
+        // the physical cleanup (which only runs after a successful commit)
+        // never even started.
+        $this->assertDatabaseHas('attachments', ['id' => $attachment->id]);
+        expect(TaskActivity::count())->toBe(0);
+        $disk->assertExists($path);
+    });
+
+    test('a physical cleanup failure after a successful commit still returns 204 and leaves no dangling row', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $path = "attachments/{$task->id}/locked.txt";
+        $attachment = $task->attachments()->create([
+            'original_name' => 'locked.txt',
+            'path' => $path,
+            'mime_type' => 'text/plain',
+            'size' => 1,
+        ]);
+
+        // Forced via a Storage facade mock, not real OS file permissions:
+        // a chmod-based failure depends on the test process running as a
+        // non-root user, which cannot be assumed in every CI environment
+        // (root bypasses permission checks entirely, silently turning this
+        // into a no-op and making the test flaky rather than red). Mocking
+        // the exact disk calls the controller makes reproduces the same
+        // "delete() reports failure, and a recheck confirms the file is
+        // genuinely still there" branch deterministically everywhere.
+        Storage::shouldReceive('disk')
+            ->once()
+            ->with(config('filesystems.attachments_disk'))
+            ->andReturn($fakeDisk = Mockery::mock(Filesystem::class));
+        $fakeDisk->shouldReceive('exists')->with($path)->twice()->andReturn(true);
+        $fakeDisk->shouldReceive('delete')->with($path)->once()->andReturn(false);
+
+        $response = $this->actingAs($user)->deleteJson("/api/attachments/{$attachment->id}");
+
+        // The DB half already committed — the API contract stays a clean
+        // 204, the row is gone, and the activity is recorded — the physical
+        // cleanup failure is only ever logged, never surfaced to the client.
+        $response->assertNoContent();
+        $this->assertDatabaseMissing('attachments', ['id' => $attachment->id]);
+        $activity = TaskActivity::sole();
+        expect($activity->type)->toBe(TaskActivityType::AttachmentRemoved);
+        expect($activity->data)->toBe(['name' => 'locked.txt']);
     });
 });
 

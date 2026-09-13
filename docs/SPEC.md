@@ -758,6 +758,8 @@ Deve exibir informações úteis como:
 
 Detalhes visuais estão definidos em `docs/UI-UX.md`.
 
+**Estado implementado (Fase 11.1):** a badge de status na Lista é interativa — um clique abre um menu com os 4 status; selecionar um diferente do atual dispara `PATCH /api/tasks/{task}` só com `{ status }`, reaproveitando o mesmo fluxo já usado pelo Kanban. Continua sem alterar `position`, `title` ou qualquer outro campo. O Kanban não foi alterado por esta mudança.
+
 ---
 
 ## 21. Criação e edição de Task
@@ -1847,3 +1849,30 @@ O projeto deve demonstrar:
 - capacidade de revisar criticamente código gerado por IA
 
 A implementação deve parecer uma aplicação construída com intenção técnica e de produto, e não apenas código produzido automaticamente.
+
+---
+
+## 78. Histórico de Atividades da Task (Fase 11 — além do mínimo)
+
+**Estado implementado (Fase 11):** cada Task passou a ter um histórico de atividades, somente leitura, exibido como uma timeline na seção "Atividade" do Task Modal (modo edição). Não é um sistema de auditoria genérico — apenas os eventos abaixo são registrados:
+
+```text
+task_created
+status_changed
+due_at_changed
+tags_changed
+attachments_added
+attachment_removed
+```
+
+Alterações de título, descrição, Project, comentários (inexistentes no MVP) e qualquer outro campo não geram Activity.
+
+Regras:
+
+- Cada Activity é imutável (sem endpoint de update/delete) e guarda um snapshot dos dados relevantes no momento do evento — por exemplo, nome/cor de uma Tag, ou o nome original de um Attachment — de forma que o histórico continua legível mesmo depois que a Tag ou o Attachment original deixam de existir.
+- `status_changed`/`due_at_changed` só são registrados quando o valor realmente muda (o mesmo instante representado em fusos horários diferentes não gera falso positivo). Quando ambos mudam na mesma requisição, `status_changed` é sempre registrado antes de `due_at_changed`.
+- Excluir uma Tag registra `tags_changed` (removendo aquela Tag) em cada Task que a possuía, já que a exclusão desassocia a Tag de todas as Tasks.
+- O endpoint `GET /api/tasks/{task}/activities` é somente leitura, autorizado pela mesma `TaskPolicy::view` de qualquer outro acesso à Task, paginado em 20 itens por página (paginação padrão do Laravel), ordenado por mais recente primeiro.
+- Datas são normalizadas para UTC ISO-8601 (`2026-09-15T21:00:00Z`); o frontend exibe no fuso do navegador.
+- O frontend carrega as Activities de forma preguiçosa: abrir o Task Modal não dispara nenhuma requisição; a primeira busca só ocorre quando a seção "Atividade" é expandida pela primeira vez.
+- List View e Kanban não carregam nem exibem Activities — o histórico existe apenas dentro do Task Modal.

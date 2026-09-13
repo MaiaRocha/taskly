@@ -251,6 +251,9 @@ async function retryTagSync(): Promise<void> {
         <p v-if="mode === 'create'" class="text-sm text-text-secondary">Crie a tarefa para adicionar anexos.</p>
         <slot v-else name="attachments" />
 
+        <!-- Activity history: same "only makes sense once the Task exists" reasoning as Attachments — no placeholder needed in create mode, the section simply doesn't render. -->
+        <slot v-if="mode === 'edit'" name="activity" />
+
         <div v-if="pendingTagSync" class="rounded-lg border border-warning/30 bg-warning/10 p-3">
             <p class="text-sm font-medium text-text-primary">
                 {{

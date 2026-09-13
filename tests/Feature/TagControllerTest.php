@@ -1,7 +1,11 @@
 <?php
 
+use App\Actions\RecordTaskActivity;
+use App\Enums\TaskActivityType;
+use App\Models\Project;
 use App\Models\Tag;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\User;
 use App\Support\ColorPalette;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -477,5 +481,107 @@ describe('destroy', function () {
         $user = User::factory()->create();
 
         $this->actingAs($user)->deleteJson('/api/tags/999999')->assertNotFound();
+    });
+});
+
+describe('tags_changed activity on tag deletion', function () {
+    test('deleting a tag with no tasks records no activity', function () {
+        $user = User::factory()->create();
+        $tag = Tag::factory()->for($user)->create();
+
+        $this->actingAs($user)->deleteJson("/api/tags/{$tag->id}")->assertNoContent();
+
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('deleting a tag attached to one task records one tags_changed with the removed snapshot', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = Tag::factory()->for($user)->create(['name' => 'Urgente', 'color' => '#EC4899']);
+        $task->tags()->attach($tag);
+
+        $this->actingAs($user)->deleteJson("/api/tags/{$tag->id}")->assertNoContent();
+
+        $activity = TaskActivity::sole();
+        expect($activity->task_id)->toBe($task->id);
+        expect($activity->type)->toBe(TaskActivityType::TagsChanged);
+        expect($activity->data)->toBe([
+            'added' => [],
+            'removed' => [['id' => $tag->id, 'name' => 'Urgente', 'color' => '#EC4899']],
+        ]);
+    });
+
+    test('deleting a tag attached to multiple tasks records one activity per task', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $taskA = Task::factory()->for($project)->create();
+        $taskB = Task::factory()->for($project)->create();
+        $taskC = Task::factory()->for($project)->create();
+        $tag = Tag::factory()->for($user)->create(['name' => 'Urgente', 'color' => '#EC4899']);
+        $taskA->tags()->attach($tag);
+        $taskB->tags()->attach($tag);
+        // $taskC deliberately left without the tag — must not receive an activity.
+
+        $this->actingAs($user)->deleteJson("/api/tags/{$tag->id}")->assertNoContent();
+
+        expect(TaskActivity::count())->toBe(2);
+        expect(TaskActivity::where('task_id', $taskA->id)->exists())->toBeTrue();
+        expect(TaskActivity::where('task_id', $taskB->id)->exists())->toBeTrue();
+        expect(TaskActivity::where('task_id', $taskC->id)->exists())->toBeFalse();
+    });
+
+    test('the recorded snapshot stays correct even though the tag itself no longer exists afterward', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = Tag::factory()->for($user)->create(['name' => 'Planejamento', 'color' => '#3B82F6']);
+        $tagId = $tag->id;
+        $task->tags()->attach($tag);
+
+        $this->actingAs($user)->deleteJson("/api/tags/{$tag->id}")->assertNoContent();
+
+        $this->assertDatabaseMissing('tags', ['id' => $tagId]);
+
+        $activity = TaskActivity::sole();
+        expect($activity->data['removed'][0])->toBe(['id' => $tagId, 'name' => 'Planejamento', 'color' => '#3B82F6']);
+    });
+
+    test('a stranger cannot trigger tag deletion or its activity for another user\'s tag', function () {
+        $stranger = User::factory()->create();
+        $owner = User::factory()->create();
+        $project = Project::factory()->for($owner)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = Tag::factory()->for($owner)->create();
+        $task->tags()->attach($tag);
+
+        $this->actingAs($stranger)->deleteJson("/api/tags/{$tag->id}")->assertForbidden();
+
+        $this->assertModelExists($tag);
+        expect(TaskActivity::count())->toBe(0);
+    });
+
+    test('if the transaction fails, neither the tag nor any activity is left behind', function () {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $task = Task::factory()->for($project)->create();
+        $tag = Tag::factory()->for($user)->create();
+        $task->tags()->attach($tag);
+
+        $this->app->bind(RecordTaskActivity::class, fn () => new class
+        {
+            public function __invoke(...$args)
+            {
+                throw new RuntimeException('Simulated activity-recording failure.');
+            }
+        });
+
+        $this->actingAs($user)
+            ->deleteJson("/api/tags/{$tag->id}")
+            ->assertServerError();
+
+        $this->assertModelExists($tag);
+        expect(TaskActivity::count())->toBe(0);
+        expect($task->tags()->count())->toBe(1);
     });
 });

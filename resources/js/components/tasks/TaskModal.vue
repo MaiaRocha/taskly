@@ -3,6 +3,7 @@ import { Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Modal from '../ui/Modal.vue';
 import type { Task } from '../../types/task';
+import TaskActivityTimeline from './TaskActivityTimeline.vue';
 import TaskAttachments from './TaskAttachments.vue';
 import TaskForm from './TaskForm.vue';
 
@@ -20,6 +21,17 @@ const emit = defineEmits<{
 }>();
 
 const isSubmitting = ref(false);
+
+// Monotonic signal for TaskActivityTimeline: bumped whenever a mutation that
+// can create an Activity happens while this Modal instance stays open (today,
+// only Attachment upload/delete — Task field/status/due_at/Tags saves always
+// close the Modal via `success` below, which unmounts the Timeline entirely
+// and lets its own lazy load pick up the new state on the next open).
+const activityRefreshKey = ref(0);
+
+function onAttachmentsChanged(): void {
+    activityRefreshKey.value += 1;
+}
 
 const title = computed(() => (props.mode === 'create' ? 'Nova tarefa' : 'Editar tarefa'));
 
@@ -40,7 +52,11 @@ function onClose(): void {
             @success="emit('success', $event)"
         >
             <template v-if="mode === 'edit' && task" #attachments>
-                <TaskAttachments :project-id="projectId" :task-id="task.id" />
+                <TaskAttachments :project-id="projectId" :task-id="task.id" @changed="onAttachmentsChanged" />
+            </template>
+
+            <template v-if="mode === 'edit' && task" #activity>
+                <TaskActivityTimeline :task-id="task.id" :refresh-key="activityRefreshKey" />
             </template>
 
             <template v-if="mode === 'edit' && task" #delete-action>

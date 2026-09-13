@@ -3,6 +3,7 @@
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TagController;
+use App\Http\Controllers\TaskActivityController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TaskTagController;
 use App\Http\Resources\UserResource;
@@ -24,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::put('/tasks/{task}/tags', [TaskTagController::class, 'update'])->name('tasks.tags.update');
+    Route::get('/tasks/{task}/activities', [TaskActivityController::class, 'index'])->name('tasks.activities.index');
 
     Route::get('/tasks/{task}/attachments', [AttachmentController::class, 'index'])->name('attachments.index');
     Route::post('/tasks/{task}/attachments', [AttachmentController::class, 'store'])->name('attachments.store');
