@@ -2,7 +2,7 @@ import { reactive } from 'vue';
 
 export interface Toast {
     id: number;
-    type: 'success';
+    type: 'success' | 'error';
     title: string;
     description?: string;
 }
@@ -62,6 +62,12 @@ function success(input: ToastInput): void {
     scheduleDismiss(id);
 }
 
+function error(input: ToastInput): void {
+    const id = nextId++;
+    toasts.push({ id, type: 'error', title: input.title, description: input.description });
+    scheduleDismiss(id);
+}
+
 export function useToast() {
-    return { toasts, success, dismiss, pauseDismiss, scheduleDismiss };
+    return { toasts, success, error, dismiss, pauseDismiss, scheduleDismiss };
 }

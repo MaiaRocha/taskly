@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { X } from '@lucide/vue';
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import IconButton from './IconButton.vue';
 
-const props = defineProps<{
-    open: boolean;
-    title: string;
-    /** Blocks the X button, backdrop click, and Escape while true (e.g. a submit in flight). */
-    closeDisabled?: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        open: boolean;
+        title: string;
+        /** Blocks the X button, backdrop click, and Escape while true (e.g. a submit in flight). */
+        closeDisabled?: boolean;
+        /** Widens the panel for content-heavier forms (e.g. the Task modal) — 'default' keeps the exact width already used by Project's modal/ConfirmDialog. */
+        size?: 'default' | 'lg';
+    }>(),
+    { size: 'default' },
+);
 
 const emit = defineEmits<{
     close: [];
@@ -22,29 +27,59 @@ let closeTimer: ReturnType<typeof setTimeout> | null = null;
 // Same approach as Drawer.vue: the <dialog>'s own open/closed state is
 // imperative (showModal()/close()), kept in sync with the `open` prop, with
 // the actual close() deferred until the fade/scale-out transition finishes.
-watch(
-    () => props.open,
-    (isOpen) => {
-        if (isOpen) {
-            if (closeTimer) {
-                clearTimeout(closeTimer);
-                closeTimer = null;
-            }
+//
+// This is centralized in one function (instead of living inline in the
+// watcher) because it must run from two different places: the watcher
+// handles `open` changing on an already-mounted instance, and `onMounted`
+// handles a component that is created with `open` already `true` — a plain
+// `{ immediate: true }` watcher can't cover that second case on its own,
+// since an immediate callback runs synchronously during setup(), before the
+// <dialog> element exists and `dialogRef.value` is bound.
+function syncDialogState(isOpen: boolean): void {
+    const dialog = dialogRef.value;
 
-            dialogRef.value?.showModal();
-            requestAnimationFrame(() => {
-                isVisible.value = true;
-            });
+    if (!dialog) {
+        return;
+    }
 
-            return;
+    if (isOpen) {
+        if (closeTimer) {
+            clearTimeout(closeTimer);
+            closeTimer = null;
         }
 
-        isVisible.value = false;
+        // showModal() throws if the dialog is already open — guarded so a
+        // redundant `open: true` (e.g. the mount-already-open case racing
+        // with the watcher) never triggers a native exception.
+        if (!dialog.open) {
+            dialog.showModal();
+        }
+
+        requestAnimationFrame(() => {
+            isVisible.value = true;
+        });
+
+        return;
+    }
+
+    isVisible.value = false;
+
+    if (dialog.open) {
         closeTimer = setTimeout(() => {
-            dialogRef.value?.close();
+            if (dialog.open) {
+                dialog.close();
+            }
         }, 200);
-    },
-);
+    }
+}
+
+watch(() => props.open, syncDialogState);
+
+onMounted(() => {
+    if (props.open) {
+        syncDialogState(true);
+    }
+});
 
 function requestClose(): void {
     if (props.closeDisabled) {
@@ -78,8 +113,8 @@ function onDialogClick(event: MouseEvent): void {
         @click="onDialogClick"
     >
         <div
-            class="flex max-h-full w-full max-w-md flex-col rounded-2xl border border-border bg-surface shadow-lg transition duration-200 ease-out"
-            :class="isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'"
+            class="flex max-h-full w-full flex-col rounded-2xl border border-border bg-surface shadow-lg transition duration-200 ease-out"
+            :class="[size === 'lg' ? 'max-w-xl' : 'max-w-md', isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0']"
         >
             <div class="flex items-center justify-between border-b border-border px-6 py-4">
                 <h2 class="text-base font-semibold text-text-primary">{{ title }}</h2>

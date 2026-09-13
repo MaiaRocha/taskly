@@ -778,3 +778,31 @@ No mobile, a Sidebar (com o quick-add) vive dentro do `Drawer` de navegação. A
 ### `@lucide/vue`
 
 Biblioteca de ícones do frontend. O pacote `lucide-vue-next` (usado brevemente no início da fase) foi removido e substituído por `@lucide/vue` — nenhuma referência ao pacote antigo permanece no código ou nas dependências.
+
+---
+
+## 26. Frontend — Tasks UI + Kanban + Attachments (Fase 9)
+
+### Tasks Store (Pinia)
+
+`stores/tasks.ts` mantém um bucket de Tasks por Project (`tasksByProject: Record<number, Task[]>`), com o mesmo tipo de proteção de resposta obsoleta do Projects Store elevado a dois níveis: um `sessionEpoch` global (incrementado só por `reset()`, cobre logout) e um `generationByProject` por Project (preparado para uma futura invalidação escopada, ainda sem caller nesta fase). Um `isValid(projectId, epoch, generation)` compartilhado guarda `fetchTasks`, `createTask`, `updateTask`, `deleteTask` e `syncTaskTags` — toda resposta só é aplicada se nem o epoch nem a generation daquele Project mudaram desde o início da requisição. `stores/tags.ts` segue o mesmo princípio com um único `sessionEpoch` (Tags são globais por usuário, não por Project). `AppShell` reseta os três stores (Projects, Tasks, Tags) tanto no `setup()` quanto no `onBeforeUnmount()`.
+
+### Task Modal, não Drawer
+
+Criação e edição de tarefa usam um Modal central (`TaskModal.vue`, reaproveitando `Modal.vue` com `size="lg"`), não um Drawer lateral. Um Drawer lateral foi a intenção original (ver histórico de `docs/UI-UX.md` §21), revisado para Modal antes do fechamento da fase por consistência visual com o Modal de Project — mesma família de bordas/sombra/header/footer/backdrop.
+
+### Task + Tags — endpoints separados, falha parcial explícita
+
+Task (`POST`/`PATCH /api/tasks`) e a sincronização de Tags (`PUT /api/tasks/{task}/tags`) são chamadas separadas. `TaskForm.vue` decide POST vs PATCH a partir de `persistedTask` (não de `mode`), garantindo que uma falha na sincronização de Tags nunca dispare um novo POST de Task em uma tentativa seguinte. Se a Task salva com sucesso mas o sync de Tags falha, o formulário não fecha, não finge sucesso, e oferece um retry que repete somente o `PUT` de Tags.
+
+### Kanban sem reorder
+
+O Kanban agrupa Tasks por `status` inteiramente no cliente, sem chamada adicional de API. Mudança de status é sempre um `PATCH /api/tasks/{task}` parcial (`{ status }`) — via menu "..." (todo tamanho de tela) ou via drag-and-drop nativo HTML5 (desktop apenas, desabilitado em dispositivos de ponteiro grosso). Não existe reorder dentro de uma coluna, nem escrita de `position` pelo cliente — o backend não expõe esse contrato nesta fase (ver §10). Um `Set<number>` (`movingTaskIds`) — não um único id — rastreia quais Tasks têm PATCH em voo, permitindo que duas Tasks distintas sejam movidas concorrentemente sem que uma limpe o estado de "movendo" da outra.
+
+### Attachments — estado local, contador reconciliado pelo GET
+
+`TaskAttachments.vue` mantém toda a lista de anexos e seus estados (loading/uploading/deleting) como estado local do componente, sem um Attachments Store dedicado — Attachments pertencem à Task atualmente aberta no Modal, não a um estado compartilhado entre páginas. O Tasks Store mantém apenas `attachments_count` (via `setTaskAttachmentsCount(projectId, taskId, count)`), atualizado depois de upload/delete bem-sucedidos e, de forma mais confiável, reconciliado a cada `GET /api/tasks/{task}/attachments` bem-sucedido (a lista completa é sempre a fonte de verdade mais recente disponível). Um `generation` local (fechamento do componente, incrementado em `onBeforeUnmount` e a cada troca de `taskId`) invalida qualquer resposta de fetch/upload/delete que resolva depois que o componente deixou de representar o contexto que a originou.
+
+### `Modal.vue` — suporte correto a `open=true` já no mount
+
+A primitiva `Modal.vue` foi corrigida para sincronizar o `<dialog>` nativo corretamente em dois casos: a transição reativa `open: false → true` de um componente já montado (via `watch`), e um componente que nasce com `open` já `true` (via `onMounted`, já que um `watch` sem `immediate: true` não dispara nesse caso, e um `watch` com `immediate: true` rodaria cedo demais, antes do `<dialog>` existir no DOM). Ambos os caminhos chamam a mesma função central (`syncDialogState`), que nunca chama `showModal()` em um dialog já aberto nem `close()` em um já fechado. Isso torna a primitiva robusta independentemente de o caller usar `v-if` para gate de montagem — nenhum caller precisou mudar por causa desta correção.

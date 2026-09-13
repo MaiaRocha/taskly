@@ -19,7 +19,8 @@ withDefaults(
         class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition duration-150 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
         :class="{
             'bg-primary font-semibold text-white shadow-sm hover:bg-primary-hover hover:shadow-md': variant === 'primary',
-            'border border-border bg-surface text-text-primary hover:bg-surface-hover': variant === 'secondary',
+            'border border-border bg-surface text-text-primary shadow-sm hover:border-primary/40 hover:bg-primary-soft hover:text-primary hover:shadow-md':
+                variant === 'secondary',
             'bg-danger font-semibold text-white shadow-sm hover:bg-danger-hover hover:shadow-md': variant === 'danger',
         }"
     >

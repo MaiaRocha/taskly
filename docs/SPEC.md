@@ -731,6 +731,8 @@ O frontend pode utilizar atualização otimista somente se possuir mecanismo con
 
 A implementação mais simples e segura deve ser priorizada.
 
+**Estado implementado (Fase 9):** a persistência de `status` foi entregue via `PATCH /api/tasks/{task}` (payload parcial `{ status }`), acionada pelo menu "..." do Card em qualquer tamanho de tela e por drag-and-drop nativo em desktop. A persistência de `position` (reorder) segue deliberadamente adiada — não existe endpoint de move/reorder, e o cliente nunca escreve `position` (ver `docs/DECISIONS.md` §10, §22 e §26). Sem atualização otimista: o Card só muda de coluna após o `PATCH` confirmar sucesso.
+
 ---
 
 ## 20. Visualização em lista
@@ -762,7 +764,7 @@ Detalhes visuais estão definidos em `docs/UI-UX.md`.
 
 ### MUST
 
-Criação e edição utilizarão o padrão de **Task Drawer** definido no documento de UI/UX.
+Criação e edição utilizam um Modal central (**Task Modal**, mesma família visual do Modal de Project — ver `docs/UI-UX.md` §21), substituindo a intenção original de Drawer lateral após revisão visual na Fase 9.
 
 O formulário deve suportar:
 
@@ -772,7 +774,7 @@ O formulário deve suportar:
 - status
 - prazo
 - tags
-- attachments
+- attachments (somente após a Task já existir — ver `docs/UI-UX.md` §22)
 
 A experiência mobile deve continuar funcional.
 
@@ -1004,7 +1006,7 @@ Elementos críticos devem permanecer utilizáveis:
 - navegação
 - lista
 - Kanban
-- Task Drawer
+- Task Modal
 - formulários
 - filtros
 - ações
@@ -1230,6 +1232,8 @@ Cobrir:
 - persistência
 - autorização
 - payload inválido
+
+**Estado implementado:** os testes reais (`tests/Feature/TaskControllerTest.php` e correlatos) cobrem mudança de status via `PATCH /api/tasks/{task}`, persistência, autorização e payload inválido. Não existem testes de "mudança de posição" porque não existe endpoint de move/reorder nesta fase (ver §71 e `docs/DECISIONS.md` §26) — não há o que testar ainda.
 
 ---
 
@@ -1700,6 +1704,8 @@ Implementar:
 
 Ainda sem priorizar extras.
 
+**Nota de numeração real:** a Fase 8 efetivamente executada foi inteiramente "App Shell + Projects" (não prevista como fase própria neste roadmap original). O conteúdo descrito aqui — List View, Task Cards, Kanban, Tags, Attachments — foi entregue sob o nome real de **Fase 9**, junto com Tags e Attachments (que este roadmap listava em fases anteriores) e sem o Drag and Drop completo da Fase 9 abaixo (ver nota em §71). Os números de fase deste roadmap ficaram, a partir daqui, deslocados em uma unidade em relação à execução real; `docs/DECISIONS.md` §21-§26 é a referência factual do que foi implementado em cada etapa.
+
 ---
 
 ## 71. Fase 9 — Drag and Drop
@@ -1712,6 +1718,8 @@ Implementar movimentação entre:
 Garantir persistência backend e tratamento de falha.
 
 Adicionar testes relevantes.
+
+**Estado implementado:** a movimentação por `status` (incluindo drag-and-drop nativo em desktop, status-only) foi entregue dentro da Fase 9 real (ver nota em §70), reaproveitando o `PATCH /api/tasks/{task}` já existente. Movimentação por `posições` (reorder) permanece fora de escopo — não há endpoint de move/reorder nem escrita de `position` pelo cliente (ver `docs/DECISIONS.md` §10, §22, §26).
 
 ---
 

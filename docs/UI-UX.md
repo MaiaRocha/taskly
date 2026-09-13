@@ -454,68 +454,41 @@ A troca não deve causar navegação confusa.
 
 ---
 
-## 21. Task Drawer
+## 21. Task Modal
 
-Criação e edição de tarefas utilizarão um Drawer lateral à direita.
+Criação e edição de tarefas utilizam um Modal central (`Modal.vue`, variante `size="lg"`), não um Drawer lateral — mesma família visual (arredondamento, borda, sombra, header com título e X, footer, backdrop) já usada pelo Modal de Project, para manter um único padrão de diálogo modal no app. Essa decisão substitui a intenção original de Drawer lateral, revisada visualmente antes do fechamento da Fase 9.
 
 ### Desktop
 
-Largura aproximada:
-
-```text
-520px a 620px
-```
-
-Limite aproximado:
-
-```text
-45% a 50% da viewport
-```
-
-O restante da tela deve continuar oferecendo contexto do projeto.
+O Modal é centralizado, com largura própria de `size="lg"` (mais largo que o Modal padrão de Project, para acomodar campos + Tags + Attachments), sem ocupar a tela inteira — o restante permanece visível como backdrop.
 
 ### Mobile
 
-O Drawer poderá ocupar:
-
-```text
-quase toda ou toda a largura
-```
-
-para preservar a usabilidade do formulário.
+O mesmo `Modal.vue` se adapta à largura disponível (com padding lateral mínimo), permanecendo confortável em telas a partir de ~360-390px, sem exigir scroll horizontal.
 
 ---
 
-## 22. Conteúdo do Task Drawer
+## 22. Conteúdo do Task Modal
 
-O Drawer deverá suportar:
+O Modal (via `TaskForm.vue`) suporta:
 
 - título
 - descrição curta
 - descrição completa
 - status
 - prazo
-- tags
-- anexos
+- tags (seleção + criação inline)
+- anexos (`TaskAttachments.vue`, apenas em modo edição — ver §32)
 - ações de salvar
-- exclusão quando aplicável
+- exclusão (ação discreta no rodapé do formulário, não no header)
 
-A organização deve favorecer preenchimento rápido.
-
-Campos menos importantes poderão ocupar posições secundárias.
+Anexos não fazem parte do submit dos campos da tarefa — têm ciclo de vida próprio (endpoints dedicados), e só aparecem depois que a tarefa já existe (ver §32).
 
 ---
 
 ## 23. Criação e edição
 
-O padrão visual de criação e edição deve ser consistente.
-
-Idealmente, utilizar o mesmo componente ou estrutura de formulário quando isso não gerar complexidade desnecessária.
-
-O usuário deve entender claramente se está:
-
-- criando
-- editando
+Criação e edição de tarefa compartilham o mesmo Modal e o mesmo componente de formulário (`TaskForm.vue`), com o título do Modal ("Nova tarefa" / "Editar tarefa") e o rótulo do botão de ação deixando claro qual operação está em andamento.
 
 ---
 
@@ -559,60 +532,43 @@ O foco deve permanecer no conteúdo das tarefas.
 
 ## 26. Task Cards
 
-Os cards do Kanban devem ser relativamente ricos.
+O mesmo `TaskCard.vue` é usado por List e Kanban, com uma prop `variant` controlando a diferença de conteúdo.
 
-Devem apresentar, quando disponíveis:
+No Kanban (`variant="kanban"`), o card apresenta, quando disponíveis:
 
 - título
-- descrição curta
 - tags
 - prazo
 - indicador de atraso
-- quantidade ou indicador de anexos
+- contagem de anexos (ícone `Paperclip` + número, só quando > 0)
+- menu "..." (mudar status)
 
-Os cards devem permitir leitura rápida sem abrir a tarefa.
+Sem repetir o status (já é a coluna) e sem `short_description` (mantém o card compacto o suficiente para caber várias colunas lado a lado). Na List (`variant="list"`), o card também mostra o badge de status e a `short_description`.
 
 ---
 
 ## 27. Drag and Drop
 
-Durante movimentação:
+Drag and Drop nativo (HTML5, sem biblioteca) está disponível apenas em **desktop**, apenas para **mudar o status** de uma Task — nunca para reordenar dentro de uma coluna (drop na própria coluna é no-op) e nunca para escrever `position` (o backend não expõe esse contrato ainda).
 
-- card deve apresentar feedback visual
-- destino deve ficar identificável
-- interação deve parecer fluida
-- cursor apropriado deve ser utilizado em desktop
+Durante a movimentação:
 
-Animações devem ser discretas.
+- o card arrastado recebe opacidade reduzida + sombra mais forte, com cursor `grab`/`grabbing` (o menu "..." mantém cursor normal, não herda o `grab`);
+- a coluna de destino válida recebe um destaque sutil (`primary-soft` + anel), nunca uma cor saturada cobrindo a coluna inteira;
+- o card só troca de coluna visualmente depois que o `PATCH` de status é confirmado (sem movimento otimista) — em caso de erro, o card permanece na coluna original e um toast de erro é exibido;
+- terminar um arraste real nunca também abre o Modal de edição (clique e drag são distinguidos de forma simples e robusta).
 
-Em caso de erro de persistência:
-
-- informar usuário
-- restaurar estado quando necessário
+Em dispositivos com ponteiro grosso (touch), o `draggable` é desativado automaticamente — nesses dispositivos a mudança de status acontece exclusivamente pelo menu "...", que permanece funcional em qualquer tamanho de tela como mecanismo de fallback confiável (teclado, mobile, acessibilidade).
 
 ---
 
-## 28. Kanban no mobile
+## 28. Kanban responsivo
 
-Kanban mobile poderá utilizar:
+O layout do Kanban responde à largura real do container (via CSS container queries, já que a Sidebar afeta o espaço disponível — não apenas à largura da viewport):
 
-```text
-scroll horizontal
-```
-
-entre colunas.
-
-Cada coluna deve possuir largura confortável para leitura dos cards.
-
-Poderá ser avaliado:
-
-```text
-scroll snap
-```
-
-se melhorar a experiência.
-
-Não comprimir quatro colunas simultaneamente na largura do celular.
+- **Desktop** (`>= 1100px` de container): 4 colunas lado a lado, drag-and-drop ativo (ver §27).
+- **Tablet** (`>= 640px` e `< 1100px`): grid de 2 colunas por linha, todas as 4 colunas visíveis, cards com largura confortável.
+- **Mobile** (`< 640px`): uma única coluna por vez, ocupando praticamente 100% da largura — nunca 4 colunas espremidas nem dependência de scroll horizontal do board inteiro. Acima da coluna, um seletor de status (pills/tabs compactas) com label + contagem por status permite trocar qual coluna é exibida; a seleção é evidente por múltiplos sinais visuais (fundo preenchido, peso da fonte), não só cor. A troca de status nesse tamanho de tela é sempre feita pelo menu "..." (sem drag).
 
 ---
 
@@ -638,21 +594,21 @@ Mobile deve adaptar o layout sem exigir scroll horizontal desnecessário.
 
 ## 30. Tags
 
-Tags devem utilizar:
+Tags utilizam:
 
-- cores controladas
-- labels compactas
-- bom contraste
+- cores controladas — uma das 6 cores auxiliares da paleta compartilhada com Project, nunca uma cor livre;
+- labels compactas (chip com dot de cor + nome);
+- bom contraste.
 
-Não utilizar cores aleatórias ilimitadas.
-
-Cards com diversas tags não devem quebrar excessivamente a estrutura visual.
+Cards com diversas tags não quebram excessivamente a estrutura visual.
 
 Limite funcional:
 
 ```text
 máximo 5 tags por tarefa
 ```
+
+A seleção de Tags acontece dentro do Task Modal (`TagPicker.vue`), com um formulário inline de criação de Tag nova (nome + cor) — ao criar, a Tag entra na lista disponível e é automaticamente selecionada para a tarefa em edição, sem exigir um segundo clique.
 
 ---
 
@@ -675,17 +631,24 @@ Não depender somente da cor para comunicar atraso.
 
 ## 32. Attachments
 
-No Task Drawer, anexos devem permitir:
+No Task Modal, a seção de anexos (`TaskAttachments.vue`) só aparece em modo edição — uma tarefa ainda não persistida (criação) mostra uma mensagem discreta ("Crie a tarefa para adicionar anexos.") em vez da seção funcional, já que o upload depende de a tarefa já ter um id.
 
-- visualizar nome
-- identificar tipo
-- visualizar tamanho quando útil
-- remover
-- adicionar
+A seção permite:
 
-Imagens poderão utilizar preview quando apropriado.
+- visualizar nome (truncado com `title` quando muito longo), ícone por categoria (imagem/documento/planilha) e tamanho legível (KB/MB);
+- adicionar arquivos (`multiple`, sem drag-and-drop de arquivos — apenas um botão "Adicionar arquivos");
+- baixar (link autenticado por sessão, armazenamento privado — sem URL pública nem path de storage exposto);
+- remover, com confirmação (`ConfirmDialog`).
 
-Erros de upload devem apresentar mensagens claras.
+Limites (validados no cliente para feedback imediato, e no backend como fonte final):
+
+```text
+até 5 arquivos por envio
+até 10 anexos por tarefa
+até 5 MB por arquivo
+```
+
+Preview de imagem não é um requisito desta fase (fica como possível melhoria futura). Erros de upload apresentam mensagens claras, nunca `alert()`.
 
 ---
 
@@ -849,7 +812,7 @@ Priorizar:
 
 - Sidebar fixa
 - boa área de Kanban
-- Task Drawer mantendo contexto
+- Task Modal mantendo contexto (backdrop translúcido preservando o restante da tela)
 - Toolbar completa
 - boa densidade de informação
 
@@ -860,10 +823,10 @@ Priorizar:
 Tablet deve adaptar:
 
 - Sidebar
-- largura do Drawer
+- Task Modal
 - Toolbar
 - métricas
-- Kanban
+- Kanban (grid de 2 colunas nesta faixa — ver §28)
 
 Evitar elementos apertados.
 
@@ -878,9 +841,9 @@ Garantir:
 - navegação funcional
 - formulários confortáveis
 - botões acessíveis
-- Kanban utilizável
+- Kanban utilizável (uma coluna por vez + seletor de status — ver §28)
 - List View legível
-- Task Drawer adequado
+- Task Modal adequado
 - filtros acessíveis
 - anexos utilizáveis
 
@@ -924,7 +887,7 @@ ProjectPage
     └── TaskCard
 ```
 
-Task Drawer poderá ser dividido em componentes menores conforme necessidade.
+O Task Modal já é dividido em componentes menores: `TaskModal` (container), `TaskForm` (campos + Tags), `TaskAttachments` (anexos, com estado próprio).
 
 Não fragmentar componentes sem benefício real.
 
@@ -1048,7 +1011,7 @@ Antes de desenvolver a interface principal, o agente deve apresentar uma propost
 - Project Page
 - List View
 - Kanban
-- Task Drawer
+- Task Modal
 - Login
 - Register
 - comportamento mobile
@@ -1087,7 +1050,7 @@ Antes de considerar a interface principal pronta, validar:
 - hierarquia clara
 - List View funcional
 - Kanban funcional
-- Task Drawer funcional
+- Task Modal funcional
 - filtros utilizáveis
 - formulários bem apresentados
 
@@ -1097,7 +1060,7 @@ Antes de considerar a interface principal pronta, validar:
 - projeto acessível
 - lista legível
 - Kanban utilizável
-- Drawer utilizável
+- Task Modal utilizável
 - formulário utilizável
 - ações principais acessíveis
 

@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router';
 import { useProjectCreateModal } from '../../composables/useProjectCreateModal';
 import { useToast } from '../../composables/useToast';
 import { useProjectsStore } from '../../stores/projects';
+import { useTagsStore } from '../../stores/tags';
+import { useTasksStore } from '../../stores/tasks';
 import type { Project } from '../../types/project';
 import ProjectFormModal from '../projects/ProjectFormModal.vue';
 import Drawer from '../ui/Drawer.vue';
@@ -26,7 +28,11 @@ const toast = useToast();
 // on /projects/:projectId (e.g. a refresh) — the shell is their common
 // ancestor.
 const projectsStore = useProjectsStore();
+const tasksStore = useTasksStore();
+const tagsStore = useTagsStore();
 projectsStore.reset();
+tasksStore.reset();
+tagsStore.reset();
 void projectsStore.fetchProjects();
 
 // On mobile the Sidebar (and its "+" quick-add) lives inside the Drawer.
@@ -53,9 +59,11 @@ resetCreateModalLifecycle();
 
 onBeforeUnmount(() => {
     // Leaving the authenticated area entirely (logout, session invalidation,
-    // navigation to /login) unmounts AppShell — clear the store immediately
-    // so no project data lingers in memory beyond the area it belongs to.
+    // navigation to /login) unmounts AppShell — clear the stores immediately
+    // so no project/task/tag data lingers in memory beyond the area it belongs to.
     projectsStore.reset();
+    tasksStore.reset();
+    tagsStore.reset();
     resetCreateModalLifecycle();
 });
 

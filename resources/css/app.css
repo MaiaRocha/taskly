@@ -36,3 +36,19 @@
     --color-swatch-green: #22c55e;
     --color-swatch-blue: #3b82f6;
 }
+
+@layer utilities {
+    /*
+     * Hides the scrollbar's visual track/thumb while leaving scrolling itself
+     * fully functional (wheel/trackpad/touch) — scoped explicitly to the
+     * Kanban board's own horizontal-scroll container, not applied globally.
+     */
+    .scrollbar-hide {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+}

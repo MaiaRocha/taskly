@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, X } from '@lucide/vue';
+import { AlertCircle, Check, X } from '@lucide/vue';
 import { useToast } from '../../composables/useToast';
 
 const { toasts, dismiss, pauseDismiss, scheduleDismiss } = useToast();
@@ -20,8 +20,12 @@ const { toasts, dismiss, pauseDismiss, scheduleDismiss } = useToast();
                 @mouseenter="pauseDismiss(toast.id)"
                 @mouseleave="scheduleDismiss(toast.id)"
             >
-                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success-soft">
-                    <Check :size="18" :stroke-width="2.5" class="text-success" aria-hidden="true" />
+                <span
+                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    :class="toast.type === 'error' ? 'bg-danger-soft' : 'bg-success-soft'"
+                >
+                    <AlertCircle v-if="toast.type === 'error'" :size="18" :stroke-width="2.5" class="text-danger" aria-hidden="true" />
+                    <Check v-else :size="18" :stroke-width="2.5" class="text-success" aria-hidden="true" />
                 </span>
 
                 <span class="min-w-0 flex-1 pt-0.5">
