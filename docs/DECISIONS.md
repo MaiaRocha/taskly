@@ -898,3 +898,31 @@ O teste que simula uma falha física de exclusão de arquivo usava `chmod` para 
 ### Status inline na Lista reaproveita o fluxo de update já existente (Fase 11.1)
 
 A badge de status da Lista virou um controle interativo (`TaskStatusBadge.vue`, prop `interactive`), mas não introduz nenhum caminho novo de escrita: dispara o mesmo `tasksStore.updateTask(projectId, taskId, { status })` — `PATCH /api/tasks/{task}` com payload parcial — que o menu "Mover para" do Kanban já usa. O backend continua a única fonte de verdade para `status`, `completed_at`, `overdue` e o registro de `status_changed` (Fase 11); o frontend nunca recalcula nenhum desses valores nem insere a Activity otimisticamente. A concorrência por Task (um `Set<number>` de ids em atualização) foi replicada em `TaskList.vue` no mesmo formato já usado por `TaskBoard.vue`, em vez de extraída para um composable/store compartilhado — a duplicação é de poucas linhas e as duas Views têm ciclos de vida de card diferentes o suficiente (drag-and-drop vs. clique simples) para não justificar uma abstração comum ainda.
+
+---
+
+## 29. DemoSeeder (dados de demonstração)
+
+### `DatabaseSeeder` neutro; `DemoSeeder` explicitamente opt-in
+
+`DatabaseSeeder::run()` não cria nenhum dado (nem o "Test User" padrão do skeleton do Laravel) — produção nasce vazia rodando só `php artisan migrate --force`. Todo o dataset de demonstração vive em `database/seeders/DemoSeeder.php`, um Seeder separado, nunca chamado por `DatabaseSeeder`, executado apenas explicitamente via `php artisan db:seed --class=DemoSeeder --force`.
+
+### Idempotência por abortar, não por sincronizar
+
+Se o usuário demo (identificado pelo e-mail configurado) já existir, `DemoSeeder` emite um aviso e retorna sem alterar absolutamente nada — nunca tenta `firstOrCreate`/`updateOrCreate` para reconciliar um dataset já existente com um novo. Motivo: as datas do dataset são relativas ao momento da execução, então "sincronizar" uma execução antiga com uma nova exigiria re-decidir quais mutações mudaram desde a última vez — reabrindo o mesmo problema de diffing que os controllers já resolvem, agora sem uma ação de usuário real por trás, com risco real de Activities duplicadas ou incoerentes.
+
+### Criação atômica em uma única transação
+
+Todo o grafo — User, Projects, Tags, Tasks, pivots de Tag e TaskActivities — é criado dentro de um único `DB::transaction()`, aberto só depois da validação de credenciais e da checagem de idempotência (nenhuma das duas escreve no banco). Uma falha em qualquer ponto do meio (testada explicitamente) desfaz tudo, inclusive o que foi criado antes da falha — nunca fica um dataset parcialmente semeado que a guarda de idempotência confundiria com "já existe".
+
+### Credenciais via config/env, nunca hardcoded
+
+`config/demo.php` expõe `name`/`email`/`password` via `env(...)` (nunca lido diretamente no Seeder) — `DEMO_USER_NAME` tem um fallback seguro e não sensível; `email`/`password` não têm fallback algum. Antes de qualquer escrita, `Validator::make(...)->validate()` confirma formato de e-mail e a mesma política de senha já usada pelo Fortify (`Illuminate\Validation\Rules\Password::default()`) — nunca uma senha fraca ou um valor ausente vira um usuário criado silenciosamente.
+
+### Activity History gerado por mutações reais, não por Factory solta
+
+`DemoSeeder` nunca insere uma `TaskActivity` diretamente — ele reproduz as mesmas regras de mutação e de registro de Activity que `TaskController`/`TaskTagController` já usam (diretamente sobre Eloquent + `RecordTaskActivity`, já que Controllers/FormRequests/Gates não são alcançáveis fora de um request HTTP autenticado, e nenhuma Policy é aplicada globalmente). Toda Task recebe `task_created`; uma mudança de status ou de prazo só existe no histórico se uma mutação real equivalente aconteceu (`$task->update(...)` seguido do mesmo diff que o controller faria) — nunca uma Activity fabricada implicando uma transição que não ocorreu de fato.
+
+### Attachments fora de escopo
+
+O Seeder não cria nenhum arquivo físico nem registro de `Attachment` — depende do storage de produção, ainda não decidido. `StoreAttachments` já é 100% reutilizável sem HTTP e pode ser usado manualmente mais tarde, quando esse storage estiver definido.
